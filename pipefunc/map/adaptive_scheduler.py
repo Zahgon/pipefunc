@@ -1,4 +1,3 @@
-"""Provides `adaptive_scheduler` integration for `pipefunc`."""
 
 from __future__ import annotations
 
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
 
 
 class AdaptiveSchedulerDetails(NamedTuple):
-    """Details for the adaptive scheduler."""
 
     learners: list[SequenceLearner]
     fnames: list[Path]
@@ -40,33 +38,12 @@ class AdaptiveSchedulerDetails(NamedTuple):
     executor_type: tuple[EXECUTOR_TYPES | Callable[[], EXECUTOR_TYPES], ...] | None = None
 
     def kwargs(self) -> dict[str, Any]:
-        """Get keyword arguments for `adaptive_scheduler.slurm_run`.
-
-        Examples
-        --------
-        >>> learners = pipefunc.map.adaptive.create_learners(pipeline, ...)
-        >>> info = learners.to_slurm_run(...)
-        >>> kwargs = info.kwargs()
-        >>> adaptive_scheduler.slurm_run(**kwargs)
-
-        """
-        dct = self._asdict()
-        return {k: v for k, v in dct.items() if not _is_none(v)}
+        pass
 
     def run_manager(self, kwargs: Any | None) -> adaptive_scheduler.RunManager:  # pragma: no cover
-        """Get a `RunManager` for the adaptive scheduler."""
-        requires("adaptive_scheduler", reason="adaptive_scheduler", extras="adaptive")
-        import adaptive_scheduler
-
-        return adaptive_scheduler.slurm_run(**(kwargs or self.kwargs()))
+        pass
 
 
-def _is_none(value: Any) -> bool:
-    if value is None:
-        return True
-    if isinstance(value, tuple):
-        return all(_is_none(x) for x in value)
-    return False
 
 
 def _fname(run_folder: Path, func: PipeFunc, index: int) -> Path:
@@ -114,7 +91,6 @@ def slurm_run_setup(
     if not any(tracker.data["extra_scheduler"]):  # all are empty
         del tracker.data["extra_scheduler"]
 
-    # Combine cores_per_node and cpus
     cores_per_node = tracker.get("cpus_per_node")
     cpus = tracker.get("cpus")
     if cores_per_node is not None and cpus is not None:
@@ -173,7 +149,6 @@ class _ResourcesContainer:
         index = _get_index(learner, func)
         for name in ["cpus_per_node", "cpus", "nodes", "partition"]:
             if callable(r):
-                # Note: we don't know if `resources.{name}` returns None or not
                 value = functools.partial(
                     _getattr_from_resources,
                     name=name,
@@ -191,7 +166,6 @@ class _ResourcesContainer:
 
 def _get_index(learner: SequenceLearner, func: PipeFunc) -> int | None:
     if func.resources_scope == "element" and func.mapspec is not None:
-        # Assumes that the learner is already split up
         assert len(learner.sequence) == 1
         return learner.sequence[0]
     return None
@@ -214,16 +188,6 @@ def _eval_resources(
     return resources(kwargs)
 
 
-def _getattr_from_resources(
-    *,
-    name: str,
-    index: int | None,
-    resources: Callable[[dict[str, Any]], Resources],
-    func: PipeFunc,
-    run_info: RunInfo,
-) -> Any | None:
-    resources_instance = _eval_resources(index, resources, func, run_info)
-    return getattr(resources_instance, name)
 
 
 def _extra_scheduler(
@@ -234,9 +198,6 @@ def _extra_scheduler(
 ) -> list[str] | Callable[[], list[str]]:
     if callable(resources):
 
-        def _fn() -> list[str]:
-            resources_instance = _eval_resources(index, resources, func, run_info)
-            return _extra_scheduler(index, resources_instance, func, run_info)  # type: ignore[return-value]
 
         return _fn
     return __extra_scheduler(resources)
@@ -253,7 +214,6 @@ def __extra_scheduler(resources: Resources) -> list[str]:
     if resources.extra_args:
         for key, value in resources.extra_args.items():
             if key == "executor_type":
-                # This is handled separately in _executor_type
                 continue
             extra_scheduler.append(f"--{key}={value}")
     return extra_scheduler
@@ -267,9 +227,6 @@ def _executor_type(
 ) -> EXECUTOR_TYPES | Callable[[], EXECUTOR_TYPES]:
     if callable(resources):
 
-        def _fn() -> EXECUTOR_TYPES:
-            resources_instance = _eval_resources(index, resources, func, run_info)
-            return _executor_type(index, resources_instance, func, run_info)
 
         return _fn
     return __executor_type(resources)

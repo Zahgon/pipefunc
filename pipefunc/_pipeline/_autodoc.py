@@ -32,52 +32,10 @@ class PipelineDocumentation:
 
     @classmethod
     def from_pipeline(cls, pipeline: Pipeline) -> PipelineDocumentation:
-        """Generates a PipelineDocumentation object from a pipeline."""
-        descriptions: dict[OUTPUT_TYPE, str] = {}
-        returns: dict[OUTPUT_TYPE, str] = {}
-        parameters: dict[str, list[str]] = defaultdict(list)
-
-        for f in pipeline.sorted_functions:
-            doc = parse_function_docstring(f.func)
-            if doc.description:
-                descriptions[f.output_name] = doc.description
-            if doc.returns:
-                returns[f.output_name] = doc.returns
-            for p, v in doc.parameters.items():
-                p_renamed = f.renames.get(p, p)
-                if p_renamed in f.bound:
-                    continue
-                if v not in parameters[p_renamed]:
-                    parameters[p_renamed].append(v)
-
-        # Add emdash to dicts where docs are missing
-        info = pipeline.info()
-        assert info is not None
-        for p in info["inputs"]:
-            if p not in parameters:
-                parameters[p].append("—")
-        for f in pipeline.functions:
-            if f.output_name not in returns:
-                returns[f.output_name] = "—"
-            if f.output_name not in descriptions:
-                descriptions[f.output_name] = "—"
-
-        return cls(
-            descriptions=descriptions,
-            parameters=dict(parameters),
-            returns=returns,
-            function_names={f.output_name: f.func.__name__ for f in pipeline.functions},
-            defaults=pipeline.defaults,
-            p_annotations=pipeline.parameter_annotations,
-            r_annotations=pipeline.output_annotations,
-            topological_order=[f.output_name for f in pipeline.sorted_functions],
-            root_args=pipeline.topological_generations.root_args,
-        )
+        pass
 
 
 class RichStyle:
-    # Colors from the Python REPL:
-    # https://github.com/python/cpython/blob/13c4def692228f09df0b30c5f93bc515e89fc77f/Lib/_colorize.py#L8-L19
     GREEN = "#00aa00"
     BOLD_RED = "bold #ff0000"
     BOLD_YELLOW = "bold #aaaa00"

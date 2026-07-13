@@ -1,4 +1,3 @@
-"""Persist and load live run-status heartbeats for async pipeline runs."""
 
 from __future__ import annotations
 
@@ -28,7 +27,6 @@ HEARTBEAT_STALE_MULTIPLIER = 2.0
 
 @dataclass(frozen=True)
 class FunctionStatusBinding:
-    """Describe which function produces which output names."""
 
     function_name: str
     output_names: tuple[str, ...]
@@ -36,7 +34,6 @@ class FunctionStatusBinding:
 
 @dataclass
 class RunStatusHeartbeatWriter:
-    """Write periodic run-status heartbeats for a persisted async run."""
 
     run_info: RunInfo
     progress_dict: Mapping[OUTPUT_TYPE, Status]
@@ -79,31 +76,10 @@ class RunStatusHeartbeatWriter:
         except asyncio.CancelledError:
             pass
 
-    def _on_task_done(self, task: asyncio.Task[Any]) -> None:
-        if self._heartbeat_task is not None:
-            self._heartbeat_task.cancel()
-            self._heartbeat_task = None
-        self.write_now(task=task)
 
     def request_write(self) -> None:
-        """Coalesce status-triggered writes onto the pipeline event loop."""
-        loop = self._event_loop
-        if loop is None:
-            return
-        with self._schedule_lock:
-            if self._write_scheduled:
-                return
-            self._write_scheduled = True
-        try:
-            loop.call_soon_threadsafe(self._flush_scheduled_write)
-        except RuntimeError:
-            with self._schedule_lock:
-                self._write_scheduled = False
+        pass
 
-    def _flush_scheduled_write(self) -> None:
-        with self._schedule_lock:
-            self._write_scheduled = False
-        self.write_now()
 
 
 def run_status_path(run_folder: str | Path) -> Path:

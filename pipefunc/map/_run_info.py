@@ -40,11 +40,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, eq=True)
 class RunInfo:
-    """Information about a ``pipeline.map()`` run.
-
-    The data in this class is immutable, except for ``resolved_shapes`` which
-    is updated as new shapes are resolved.
-    """
 
     inputs: dict[str, Any]
     defaults: dict[str, Any]
@@ -134,9 +129,7 @@ class RunInfo:
     def init_store(self) -> dict[str, StoreType]:
         store: dict[str, StoreType] = {}
         name_mapping = {at_least_tuple(name): name for name in self.shapes}
-        # Initialize StorageBase instances for each map spec output
         for mapspec in self.mapspecs:
-            # `mapspec.output_names` is always tuple, even for single output
             output_name: OUTPUT_TYPE = name_mapping[mapspec.output_names]
             if mapspec.inputs:
                 shape = self.resolved_shapes[output_name]
@@ -150,7 +143,6 @@ class RunInfo:
                 )
                 store.update(zip(mapspec.output_names, arrays))
 
-        # Set up paths or DirectValue for outputs not initialized as StorageBase
         for output_name in self.all_output_names:
             if output_name not in store:
                 store[output_name] = (
@@ -160,19 +152,7 @@ class RunInfo:
                 )
         return store
 
-    @property
-    def input_paths(self) -> dict[str, Path]:
-        if self.run_folder is None:  # pragma: no cover
-            msg = "Cannot get `input_paths` without `run_folder`."
-            raise ValueError(msg)
-        return {k: _input_path(k, self.run_folder) for k in self.inputs}
 
-    @property
-    def defaults_path(self) -> Path:
-        if self.run_folder is None:  # pragma: no cover
-            msg = "Cannot get `defaults_path` without `run_folder`."
-            raise ValueError(msg)
-        return _defaults_path(self.run_folder)
 
     @functools.cached_property
     def mapspecs(self) -> list[MapSpec]:
@@ -187,8 +167,6 @@ class RunInfo:
         data = asdict(self)
         del data["inputs"]  # Cannot serialize inputs
         del data["defaults"]  # or defaults
-        # Here .relative_to to lstrip(run_folder) prefix for both input_paths and defaults_path
-        # We used to *not* do this in versions <=0.86.0, see _legacy_fix
         data["input_paths"] = {
             k: str(v.relative_to(self.run_folder)) for k, v in self.input_paths.items()
         }
@@ -241,7 +219,6 @@ class RunInfo:
             return
         if shape_is_resolved(self.resolved_shapes[output_name]):
             return
-        # After a new shape is known, update downstream shapes
         internal: ShapeDict = {
             name: internal_shape_from_mask(shape, self.shape_masks[name])
             for name, shape in self.resolved_shapes.items()
@@ -252,7 +229,6 @@ class RunInfo:
             shape = np.shape(output)
         assert shape is not None
         internal[output_name] = internal_shape_from_mask(shape, self.shape_masks[output_name])
-        # RunInfo.mapspecs is topologically ordered
         mapspecs = {name: mapspec for mapspec in self.mapspecs for name in mapspec.output_names}
         has_updated = False
         for name, _shape in self.resolved_shapes.items():
@@ -326,17 +302,13 @@ def _legacy_fix(data: dict, run_folder: Path) -> None:
     """
     stored_run_folder = data["run_folder"]
 
-    # ``error_handling`` was introduced in v0.89.0; older run_info.json files lack it
-    # which would otherwise cause RunInfo(**data) to raise.
     data.setdefault("error_handling", "raise")
 
-    # Detect legacy: check if paths start with stored run_folder
     legacy_path = data["defaults_path"].startswith(stored_run_folder)
 
     if not legacy_path:
         return
 
-    # Fix paths: strip the stored run_folder prefix
     stored_prefix = Path(stored_run_folder)
 
     data["run_folder"] = str(run_folder.resolve())
@@ -346,7 +318,6 @@ def _legacy_fix(data: dict, run_folder: Path) -> None:
     }
 
 
-# Max size for inputs in bytes (100 kB)
 _MAX_SIZE_BYTES_INPUT = 100 * 1024
 
 
@@ -496,7 +467,6 @@ def _compare_to_previous_run_info(
         msg = f"Could not load previous run info: {e}, cannot use `resume=True`."
         raise ValueError(msg) from None
 
-    # Validate error_handling mode matches - critical for correct behavior
     if error_handling != old.error_handling:
         msg = (
             f"`error_handling='{error_handling}'` does not match previous run "
@@ -505,7 +475,6 @@ def _compare_to_previous_run_info(
         )
         raise ValueError(msg)
 
-    # Always validate shapes and mapspecs regardless of resume_validation mode
     if internal_shapes != old.internal_shapes:
         msg = "Internal shapes do not match previous run, cannot use `resume=True`."
         raise ValueError(msg)
@@ -517,15 +486,12 @@ def _compare_to_previous_run_info(
         msg = "Shapes do not match previous run, cannot use `resume=True`."
         raise ValueError(msg)
 
-    # Skip input/default validation if requested
     if resume_validation == "skip":
         return
 
-    # Validate inputs
     if not _validate_dict_equality("inputs", inputs, old.inputs, resume_validation, verbose=True):
         return
 
-    # Validate defaults
     _validate_dict_equality("defaults", pipeline.defaults, old.defaults, resume_validation)
 
 
@@ -557,8 +523,6 @@ def _input_path(input_name: str, run_folder: Path) -> Path:
     return run_folder / "inputs" / f"{input_name}.cloudpickle"
 
 
-def _defaults_path(run_folder: Path) -> Path:
-    return run_folder / "defaults" / "defaults.cloudpickle"
 
 
 def _init_arrays(

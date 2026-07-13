@@ -1,4 +1,3 @@
-"""Provides `pipefunc.helpers` module with various tools."""
 
 from __future__ import annotations
 
@@ -84,10 +83,6 @@ def collect_kwargs(
     ]
     new_sig = sig.replace(parameters=new_params)
 
-    def _wrapped(*args: Any, **kwargs: Any) -> Any:
-        bound = new_sig.bind(*args, **kwargs)
-        bound.apply_defaults()
-        return cls(**bound.arguments)
 
     _wrapped.__signature__ = new_sig  # type: ignore[attr-defined]
     _wrapped.__name__ = function_name
@@ -139,11 +134,6 @@ def get_attribute_factory(
     )
     sig = inspect.Signature(parameters=[param], return_annotation=return_annotation)
 
-    def _wrapped(*args: Any, **kwargs: Any) -> Any:
-        bound = sig.bind(*args, **kwargs)
-        bound.apply_defaults()
-        obj = bound.arguments[parameter_name]
-        return getattr(obj, attribute_name)
 
     _wrapped.__signature__ = sig  # type: ignore[attr-defined]
     _wrapped.__name__ = function_name
@@ -151,23 +141,6 @@ def get_attribute_factory(
 
 
 class FileValue:
-    """A reference to a value stored in a file.
-
-    This class provides a way to store and load values from files, which is useful
-    for passing large objects between processes without serializing them directly.
-
-    Parameters
-    ----------
-    path
-        Path to the file containing the serialized value.
-
-    Examples
-    --------
-    >>> ref = FileValue.from_data([1, 2, 3], Path("data.pkl"))
-    >>> ref.load()
-    [1, 2, 3]
-
-    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path).absolute()
@@ -215,7 +188,6 @@ def _setup_automatic_tab_updates(index_output: int, tabs: OutputTabs, async_map:
 
         return callback
 
-    # Set initial status to running and add callbacks
     tabs.set_tab_status(index_output, "running")
     async_map.task.add_done_callback(create_callback())
 
@@ -259,11 +231,8 @@ async def gather_maps(
     async def run_with_semaphore(index: int, async_map: AsyncMap) -> ResultDict:
         async with semaphore:
             if _tabs is not None and async_map._display_widgets:
-                # Cannot use output_context here, because it is not thread-safe
-                # See https://github.com/jupyter-widgets/ipywidgets/issues/3993
                 from pipefunc._widgets.progress_ipywidgets import IPyWidgetsProgressTracker
 
-                # Disable `display` on the first call to `start`
                 async_map._display_widgets = False
                 async_map.start()
                 widgets = []
@@ -422,7 +391,6 @@ def chain(
         msg = "chain requires at least one function"
         raise ValueError(msg)
 
-    # Normalize to PipeFunc instances
     pfs: list[_PipeFunc] = []
     for f in functions:
         pf = (
@@ -432,22 +400,18 @@ def chain(
         )
         pfs.append(pf.copy() if copy else pf)
 
-    # Nothing to connect if only one
     if len(pfs) == 1:
         return pfs
 
-    # Apply renames to connect each pair
     upstream = pfs[0]
     for downstream in pfs[1:]:
         upstream_outputs = at_least_tuple(upstream.output_name)
         free_params = [p for p in downstream.parameters if p not in downstream.bound]
 
-        # Prefer existing matches among free parameters
         if any(name in free_params for name in upstream_outputs):
             upstream = downstream
             continue
 
-        # No explicit match - validate and rename first parameter
         if not downstream.parameters:
             msg = f"Function {downstream} has no parameters to receive upstream value."
             raise ValueError(msg)
@@ -456,7 +420,6 @@ def chain(
             msg = f"All parameters of {downstream} are bound; cannot auto-select input parameter."
             raise ValueError(msg)
 
-        # Require first parameter to be non-bound for auto-selection
         first_param = downstream.parameters[0]
         if first_param in downstream.bound:
             upstream_out = upstream_outputs[0]
@@ -467,7 +430,6 @@ def chain(
             )
             raise ValueError(msg)
 
-        # Rename first parameter to upstream output
         desired_name = upstream_outputs[0]
         downstream.update_renames({first_param: desired_name}, update_from="current")
 

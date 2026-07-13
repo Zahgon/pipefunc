@@ -1,4 +1,3 @@
-"""Implements a `dict` based `StorageBase` class."""
 
 from __future__ import annotations
 
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 
 
 class DictArray(StorageBase):
-    """A `numpy.ndarray` backed by a `dict` with internal structure."""
 
     storage_id = "dict"
     requires_serialization = False
@@ -77,10 +75,6 @@ class DictArray(StorageBase):
         np_index = np.unravel_index(index, self.resolved_shape)
         return np_index in self._dict
 
-    def _internal_mask(self) -> np.ma.MaskedArray:
-        if self.internal_shape:
-            return np.ma.empty(self.resolved_internal_shape, dtype=object)
-        return np.ma.masked
 
     def __getitem__(self, key: tuple[int | slice, ...]) -> Any:
         """Return the data associated with the given key."""
@@ -160,7 +154,6 @@ class DictArray(StorageBase):
             value_array = np.asarray(value)
 
             if value_array.shape == self.resolved_internal_shape:
-                # Normal case - shapes match
                 full_index = select_by_mask(
                     self.shape_mask,
                     external_index,
@@ -177,11 +170,7 @@ class DictArray(StorageBase):
 
     @property
     def mask(self) -> np.ma.core.MaskedArray:
-        """Return the mask associated with the array."""
-        mask: np.ndarray = np.full(self.resolved_shape, fill_value=True, dtype=bool)
-        for external_index in self._dict:
-            mask[external_index] = False
-        return np.ma.MaskedArray(mask, mask=mask, dtype=bool)
+        pass
 
     def mask_linear(self) -> list[bool]:
         """Return a list of booleans indicating which elements are missing."""
@@ -239,20 +228,16 @@ class DictArray(StorageBase):
 
     @property
     def dump_in_subprocess(self) -> bool:
-        """Indicates if the storage can be dumped in a subprocess and read by the main process."""
-        return False
+        pass
 
 
 def _masked_empty(shape: tuple[int, ...]) -> np.ndarray:
-    # This is a workaround for the fact that setting `x[:] = np.ma.masked`
-    # sets the elements to 0.0.
     x: np.ndarray = np.empty((1,), dtype=object)
     x[0] = np.ma.masked
     return np.tile(x, shape)
 
 
 class SharedMemoryDictArray(DictArray):
-    """Array interface to a shared memory dict store."""
 
     storage_id = "shared_memory_dict"
     requires_serialization = True
@@ -280,8 +265,7 @@ class SharedMemoryDictArray(DictArray):
 
     @property
     def dump_in_subprocess(self) -> bool:
-        """Indicates if the storage can be dumped in a subprocess and read by the main process."""
-        return True
+        pass
 
 
 register_storage(DictArray)

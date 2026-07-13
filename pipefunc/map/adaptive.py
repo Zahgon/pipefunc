@@ -1,4 +1,3 @@
-"""Provides `adaptive` integration for `pipefunc`."""
 
 from __future__ import annotations
 
@@ -48,14 +47,12 @@ if TYPE_CHECKING:
 
 
 class LearnerPipeFunc(NamedTuple):
-    """A tuple with `~adaptive.SequenceLearner` and `~pipefunc.PipeFunc`."""
 
     learner: SequenceLearner
     pipefunc: PipeFunc
 
 
 class AxisIndex(NamedTuple):
-    """A named tuple to store the axis and index for a fixed axis."""
 
     axis: str
     idx: int | slice  # not called `index` to avoid shadowing the built-in
@@ -65,7 +62,6 @@ LearnersDictType: TypeAlias = UserDict[tuple[AxisIndex, ...] | None, list[list[L
 
 
 class LearnersDict(LearnersDictType):
-    """A dictionary of adaptive learners for a pipeline as returned by `create_learners`."""
 
     def __init__(
         self,
@@ -87,10 +83,7 @@ class LearnersDict(LearnersDictType):
         return flat_learners
 
     def simple_run(self) -> None:
-        """Run all the learners in the dictionary in order using `adaptive.runner.simple`."""
-        for learner_list in self.flatten().values():
-            for learner in learner_list:
-                runner.simple(learner)
+        pass
 
     def to_slurm_run(
         self,
@@ -100,56 +93,7 @@ class LearnersDict(LearnersDictType):
         returns: Literal["run_manager", "kwargs", "namedtuple"] = "kwargs",
         **slurm_run_kwargs: Any,
     ) -> dict[str, Any] | adaptive_scheduler.RunManager | AdaptiveSchedulerDetails:
-        """Helper for `adaptive_scheduler.slurm_run` which returns a `adaptive_scheduler.RunManager`.
-
-        Parameters
-        ----------
-        default_resources
-            The default resources to use for the run. Only needed if not all `PipeFunc`s have
-            resources.
-        ignore_resources
-            Whether to ignore the resources of the `PipeFunc`s and use the `default_resources`
-            for all of them.
-        returns
-            What to return. Can be one of "run_manager", "kwargs", or "namedtuple".
-            If "run_manager", returns a `adaptive_scheduler.RunManager`.
-            If "kwargs", returns a dictionary that can be passed to `adaptive_scheduler.slurm_run`.
-            If "namedtuple", returns an `AdaptiveSchedulerDetails`.
-        slurm_run_kwargs
-            Additional keyword arguments to pass to `adaptive_scheduler.slurm_run`.
-
-        Returns
-        -------
-            The output depends on the value of `returns`.
-
-        """
-        from .adaptive_scheduler import slurm_run_setup
-
-        if self.run_info is None:
-            msg = "`run_info` must be provided. Set `learners_dict.run_info`."
-            raise ValueError(msg)
-
-        details: AdaptiveSchedulerDetails = slurm_run_setup(
-            self,
-            default_resources,
-            ignore_resources=ignore_resources,
-        )
-        if returns == "namedtuple":
-            if slurm_run_kwargs:
-                msg = "Cannot pass `slurm_run_kwargs` when `returns='namedtuple'`."
-                raise ValueError(msg)
-            return details
-        kwargs = details.kwargs()
-        if slurm_run_kwargs:
-            kwargs.update(slurm_run_kwargs)
-        assert self.run_info.run_folder is not None
-        kwargs.setdefault("folder", self.run_info.run_folder / "adaptive_scheduler")
-        if returns == "run_manager":  # pragma: no cover
-            return details.run_manager(kwargs)
-        if returns == "kwargs":
-            return kwargs
-        msg = f"Invalid value for `returns`: {returns}"
-        raise ValueError(msg)
+        pass
 
 
 def create_learners(
@@ -344,7 +288,6 @@ def _learner(
 def _key(fixed_indices: dict[str, int | slice] | None) -> tuple[AxisIndex, ...] | None:
     if not fixed_indices:
         return None
-    # Makes `fixed_indices` hashable
     return tuple(AxisIndex(axis=axis, idx=idx) for axis, idx in sorted(fixed_indices.items()))
 
 
@@ -379,21 +322,7 @@ def _execute_iteration_in_single(
     *,
     return_output: bool = False,
 ) -> Any | None:
-    """Execute a single iteration of a single function.
-
-    Meets the requirements of `adaptive.SequenceLearner`.
-    """
-    _ensure_adaptive_error_mode(run_info)
-    output, exists = _load_from_store(func.output_name, store, return_output=return_output)
-    if exists:
-        return output
-    kwargs_task = _submit_func(func, run_info, store, fixed_indices=None, executor=None)
-    result = _process_task(func, kwargs_task, store, run_info, return_results=True)
-    if not return_output:
-        return None
-    assert result is not None
-    output = tuple(result[name].output for name in at_least_tuple(func.output_name))
-    return output if isinstance(func.output_name, tuple) else output[0]
+    pass
 
 
 def _execute_iteration_in_map_spec(
@@ -411,12 +340,10 @@ def _execute_iteration_in_map_spec(
     """
     _ensure_adaptive_error_mode(run_info)
     arrays: list[StorageBase] = [store[name] for name in at_least_tuple(func.output_name)]  # type: ignore[misc]
-    # Load the data if it exists
     if all(arr.has_index(index) for arr in arrays):
         if not return_output:
             return None
         return tuple(arr.get_from_index(index) for arr in arrays)
-    # Otherwise, run the function
     assert isinstance(func.mapspec, MapSpec)
     kwargs = _func_kwargs(func, run_info, store)
     shape = run_info.resolved_shapes[func.output_name]
@@ -440,10 +367,6 @@ def _execute_iteration_in_map_spec(
 
 @dataclass(frozen=True, slots=True)
 class _MapWrapper:
-    """Wraps the `pipefunc.map.map` function and makes it a callable with a single unused argument.
-
-    Copies the Pipeline and removes the cache to avoid issues with the parallel execution.
-    """
 
     pipeline: Pipeline
     inputs: dict[str, Any]
@@ -572,7 +495,6 @@ def _iterate_axes(
         )
         shape.append(shapes[parameter][dim])
     new_shape = tuple(shape)
-    # We can assert this because the internal_shapes should never appear as independent axes
     assert shape_is_resolved(new_shape)
     for indices in iterate_shape_indices(new_shape):
         yield dict(zip(independent_axes, indices))
@@ -601,22 +523,6 @@ def _maybe_iterate_axes(
         yield _fixed_indices
 
 
-def _adaptive_wrapper(
-    _adaptive_value: float | tuple[float, ...],
-    pipeline: Pipeline,
-    inputs: dict[str, Any],
-    adaptive_dimensions: tuple[str, ...],
-    adaptive_output: str,
-    run_folder_template: str,
-    map_kwargs: dict[str, Any],
-) -> float:
-    run_folder = run_folder_template.format(_adaptive_value)
-    values: tuple[float, ...] = at_least_tuple(_adaptive_value)
-    inputs_ = inputs.copy()
-    for dim, val in zip(adaptive_dimensions, values):
-        inputs_[dim] = val
-    results = pipeline.map(inputs_, run_folder=run_folder, show_progress=False, **map_kwargs)
-    return results[adaptive_output].output
 
 
 def _validate_adaptive(

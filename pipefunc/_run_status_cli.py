@@ -1,4 +1,3 @@
-"""CLI for inspecting persisted pipefunc runs."""
 
 from __future__ import annotations
 

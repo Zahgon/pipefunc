@@ -1,4 +1,3 @@
-"""Provides the `pipefunc.lazy` module, which contains functions for lazy evaluation."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 
 
 class _LazyFunction:
-    """Lazy function wrapper for deferred evaluation of a function."""
 
     __slots__ = ["_evaluated", "_id", "_result", "args", "func", "kwargs"]
 
@@ -76,7 +74,6 @@ class _LazyFunction:
 
 
 class TaskGraph(NamedTuple):
-    """A named tuple representing a task graph."""
 
     graph: nx.DiGraph
     mapping: dict[int, _LazyFunction]

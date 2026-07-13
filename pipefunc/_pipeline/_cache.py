@@ -16,37 +16,6 @@ if TYPE_CHECKING:
 _CACHE_KEY_TYPE: TypeAlias = tuple[OUTPUT_TYPE, tuple[tuple[str, Any], ...]]
 
 
-def create_cache(
-    cache_type: Literal["lru", "hybrid", "disk", "simple"] | None,
-    lazy: bool,
-    cache_kwargs: dict[str, Any] | None,
-) -> LRUCache | HybridCache | DiskCache | SimpleCache | None:
-    if cache_type is None:
-        return None
-    if cache_kwargs is None:
-        cache_kwargs = {}
-    if cache_type == "lru":
-        cache_kwargs.setdefault("shared", not lazy)
-        return LRUCache(**cache_kwargs)
-    if cache_type == "hybrid":
-        if lazy:
-            warnings.warn(
-                "Hybrid cache uses function evaluation duration which"
-                " is not measured correctly when using `lazy=True`.",
-                UserWarning,
-                stacklevel=2,
-            )
-        cache_kwargs.setdefault("shared", not lazy)
-        return HybridCache(**cache_kwargs)
-    if cache_type == "disk":
-        cache_kwargs.setdefault("lru_shared", not lazy)
-        cache_kwargs.setdefault("cache_dir", tempfile.gettempdir())
-        return DiskCache(**cache_kwargs)
-    if cache_type == "simple":
-        return SimpleCache()
-
-    msg = f"Invalid cache type: {cache_type}."
-    raise ValueError(msg)
 
 
 def compute_cache_key(
@@ -84,9 +53,6 @@ def compute_cache_key(
     cache_key_items = []
     for k in root_args:
         if k not in kwargs:
-            # This means the computation was run with non-root inputs
-            # i.e., the output of a function was directly provided as an input to
-            # another function. In this case, we don't want to cache the result.
             return None
         key = to_hashable(kwargs[k])
         cache_key_items.append((k, key))
@@ -100,7 +66,6 @@ def update_cache(
     r: Any,
     start_time: float,
 ) -> None:
-    # Used in _run
     if isinstance(cache, HybridCache):
         duration = time.perf_counter() - start_time
         cache.put(cache_key, r, duration)
@@ -120,7 +85,6 @@ def get_result_from_cache(
 ) -> tuple[bool, bool]:
     from ._base import _update_all_results
 
-    # Used in _run
     result_from_cache = False
     if cache_key is not None and cache_key in cache:
         r = cache.get(cache_key)

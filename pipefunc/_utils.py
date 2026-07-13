@@ -1,4 +1,3 @@
-"""General utility functions, should not import anything from pipefunc."""
 
 from __future__ import annotations
 
@@ -214,18 +213,13 @@ def is_equal(  # noqa: C901, PLR0911, PLR0912
             import polars as pl
 
             if isinstance(a, pl.DataFrame):
-                # Check schema first to avoid errors with different column types
                 if a.schema != b.schema:
                     return False
-                # Use null_equal=True to properly handle null values
                 return a.equals(b, null_equal=True)
             if isinstance(a, pl.Series):
-                # Check dtype first
                 if a.dtype != b.dtype:
                     return False
-                # Use null_equal=True to properly handle null values
                 return a.equals(b, null_equal=True)
-        # Cast to bool to prevent issues with custom equality methods
         return bool(a == b)
     except Exception:
         if on_error == "raise":
@@ -336,10 +330,7 @@ def assert_complete_kwargs(
 
 def get_local_ip() -> str:
     try:
-        # Create a socket to connect to a remote host
-        # This helps in getting the network interface's IP
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            # This does not actually connect to '8.8.8.8', it is simply used to find the local IP
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
     except Exception:  # noqa: BLE001  # pragma: no cover
@@ -452,8 +443,6 @@ def get_ncores(ex: Executor) -> int:  # noqa: PLR0911, PLR0912
         import adaptive_scheduler
 
         if isinstance(ex, adaptive_scheduler.SlurmExecutor):
-            # This could be better but since there is `cores`, `cores_per_node`,
-            # and `nodes`; and they can be `None`, we just return 1 for now.
             return 1
     if is_imported("executorlib"):  # pragma: no cover
         import executorlib
@@ -508,8 +497,6 @@ def _parse_docstring_sections(
 
     options = get_args(DocstringStyle)
     if docstring_parser == "auto":
-        # Poor man's "auto" parser selection because griffe has this as a paid feature
-        # https://mkdocstrings.github.io/griffe-autodocstringstyle/insiders/
         results = [
             _parse_docstring_sections(docstring, parser)  # type: ignore[arg-type]
             for parser in options
@@ -528,7 +515,6 @@ def _parse_docstring_sections(
 
 @dataclass
 class DocstringInfo:
-    """A class to store a function's docstring and its extracted parameter docstrings."""
 
     description: str | None
     parameters: dict[str, str]
@@ -574,7 +560,6 @@ def parse_function_docstring(
         if section.kind.name == "returns":
             for return_value in section.value:
                 if return_value.description or return_value.annotation:
-                    # If numpy style without types, the description is the annotation
                     value = return_value.description or return_value.annotation.lstrip()
                     returns.append(value)
         if section.kind.name == "text":
@@ -615,11 +600,9 @@ def infer_shape(x: Any) -> tuple[int, ...]:  # noqa: PLR0911
     if not x:
         return (0,)
 
-    # If not all items are lists, we can only determine the first dimension
     if not all(isinstance(item, (list, tuple)) for item in x):
         return (len(x),)
 
-    # All items are lists, check if they have the same length
     first_len = len(x[0])
     if not all(len(item) == first_len for item in x):
         return (len(x),)
@@ -627,10 +610,8 @@ def infer_shape(x: Any) -> tuple[int, ...]:  # noqa: PLR0911
     if first_len == 0:
         return (len(x), 0)
 
-    # Recursively find the shape of sub-lists
     sub_shapes = [infer_shape(item) for item in x]
 
-    # Check if all sub-shapes are identical
     first_sub_shape = sub_shapes[0]
     if not all(s == first_sub_shape for s in sub_shapes[1:]):
         return (len(x), first_len)
@@ -658,11 +639,8 @@ def pandas_to_polars(df: Any) -> Any:
     import polars as pl
 
     try:
-        # Try using from_pandas first (most efficient, preserves types)
         return pl.from_pandas(df)
     except ImportError:
-        # Fallback to manual conversion if pyarrow is not available
-        # This happens when pandas has nullable types but pyarrow is not installed
         return pl.DataFrame({col: df[col].to_numpy() for col in df.columns})
 
 

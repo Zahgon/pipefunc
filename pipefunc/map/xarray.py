@@ -1,4 +1,3 @@
-"""Provides `xarray` integration for `pipefunc`."""
 
 from __future__ import annotations
 
@@ -86,17 +85,6 @@ def xarray_dataset_from_results(
     )
 
 
-def _data_loader(
-    output_name: str,
-    *,
-    run_folder: Path | None = None,
-    data: ResultDict | None = None,
-) -> Any:
-    if data is not None:
-        assert data is not None
-        return data[output_name].output
-    assert run_folder is not None
-    return load_outputs(output_name, run_folder=run_folder)
 
 
 def _xarray(
@@ -195,20 +183,14 @@ def _xarray_dataset(
         for name in mapspec_output_names
     }
     all_coords = {coord for data in data_arrays.values() for coord in data.coords}
-    # Remove the DataArrays that are already appear in other DataArrays' coords
     to_merge = [v for k, v in data_arrays.items() if k not in all_coords]
     ds = xr.merge(to_merge, compat="override")
     for name in single_output_names:
         array = data_loader(name)
         array = _maybe_to_array(array)
         if isinstance(array, np.ndarray):
-            # Wrap in DimensionlessArray to avoid xarray trying to interpret
-            # the data and requiring dimensions, resulting in an error
             ds[name] = ((), DimensionlessArray(array))
         else:
-            # Create a 0-D object array by assigning to an empty array.
-            # This prevents numpy from iterating over objects with __getitem__
-            # (which would produce unexpected array shapes).
             scalar_array = np.empty((), dtype=object)
             scalar_array[()] = array
             ds[name] = ((), scalar_array)
@@ -217,7 +199,6 @@ def _xarray_dataset(
 
 @dataclass
 class DimensionlessArray:
-    """A class to represent an array without dimensions."""
 
     arr: np.ndarray
 
@@ -236,20 +217,16 @@ def _split_tuple_columns(df: pd.DataFrame) -> pd.DataFrame:
 def xarray_dataset_to_dataframe(ds: xr.Dataset) -> pd.DataFrame:
     """Convert an xarray dataset to a pandas dataframe."""
     if not ds.coords:
-        # Return a single row dataframe if there are no coordinates
         data = {}
         for data_var, value in ds.data_vars.items():
             val = value.data
-            # Unwrap 0D numpy arrays
             if isinstance(val, np.ndarray) and val.ndim == 0:
                 val = val.item()
-            # Unwrap DimensionlessArray
             if isinstance(val, DimensionlessArray):
                 val = val.arr
             data[data_var] = [val]
         return pd.DataFrame(data)
     df = ds.to_dataframe().reset_index(drop=True)
-    # Identify if a column is a DimensionlessArray
     for col in df.columns:
         if isinstance(df[col].iloc[0], DimensionlessArray):
             df[col] = df[col].apply(lambda x: x.arr)
@@ -270,7 +247,6 @@ def _create_multiindex(
     try:
         return pd.MultiIndex.from_arrays(arrays, names=names)
     except TypeError:
-        # This path assumes that items within each array are unique.
         codes = [range(len(arr)) for arr in arrays]
         levels = [pd.Index(arr) for arr in arrays]
         return pd.MultiIndex(

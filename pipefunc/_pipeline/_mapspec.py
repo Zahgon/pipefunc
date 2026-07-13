@@ -9,44 +9,8 @@ if TYPE_CHECKING:
     from pipefunc._pipefunc import PipeFunc
 
 
-def _axes_from_dims(p: str, dims: dict[str, int], axis: str) -> tuple[str | None, ...]:
-    n = dims.get(p, 1) - 1
-    return n * (None,) + (axis,)
 
 
-def add_mapspec_axis(p: str, dims: dict[str, int], axis: str, functions: list[PipeFunc]) -> None:
-    # Modify the MapSpec of functions that depend on `p` to include the new axis
-    if "," in axis:
-        # If the axis is a comma-separated list of axes, add each axis separately.
-        for _axis in axis.split(","):
-            _axis = _axis.strip()
-            add_mapspec_axis(p, dims, _axis, functions)
-        return
-
-    for f in functions:
-        if p not in f.parameters or p in f._bound:
-            continue
-        if f.mapspec is None:
-            axes = _axes_from_dims(p, dims, axis)
-            input_specs = [ArraySpec(p, axes)]
-            output_specs = [ArraySpec(name, (axis,)) for name in at_least_tuple(f.output_name)]
-        else:
-            existing_inputs = set(f.mapspec.input_names)
-            if p in existing_inputs:
-                input_specs = [
-                    s.add_axes(axis) if s.name == p and axis not in s.axes else s
-                    for s in f.mapspec.inputs
-                ]
-            else:
-                axes = _axes_from_dims(p, dims, axis)
-                input_specs = [*f.mapspec.inputs, ArraySpec(p, axes)]
-            output_specs = [
-                s.add_axes(axis) if axis not in s.axes else s for s in f.mapspec.outputs
-            ]
-        f.mapspec = MapSpec(tuple(input_specs), tuple(output_specs), _is_generated=True)
-        for o in output_specs:
-            dims[o.name] = len(o.axes)
-            add_mapspec_axis(o.name, dims, axis, functions)
 
 
 def find_non_root_axes(
@@ -94,7 +58,6 @@ def replace_none_in_axes(
                 non_root_inputs[name][j] = new_axis
                 all_axes_names.add(new_axis)
                 if name in multi_output_mapping:
-                    # If output is a tuple, update its axes with the new axis.
                     for output_name in multi_output_mapping[name]:
                         if output_name not in non_root_inputs:
                             continue
@@ -106,7 +69,6 @@ def create_missing_mapspecs(
     functions: list[PipeFunc],
     non_root_inputs: dict[str, set[str]],
 ) -> set[PipeFunc]:
-    # Mapping from output_name to PipeFunc for functions without a MapSpec
     outputs_without_mapspec: dict[str, PipeFunc] = {
         name: func
         for func in functions

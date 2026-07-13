@@ -1,4 +1,3 @@
-"""Custom type hinting utilities for pipefunc."""
 
 import re
 import sys
@@ -24,23 +23,18 @@ from pipefunc._utils import is_imported
 
 
 class NoAnnotation:
-    """Marker class for missing type annotations."""
+    pass
 
 
 T = TypeVar("T")
 
 
 class ArrayElementType(Generic[T]):
-    """Marker class for the element type of an annotated numpy array."""
+    pass
 
 
 class Array(Generic[T], np.ndarray[Any, np.dtype[np.object_]]):
-    """Annotated numpy array type hint with element type."""
 
-    # NOTE: Ideally we would do something like this:
-    # `Array = Annotated[np.ndarray[Any, np.dtype[object]], ArrayElementType[T]]`
-    # however, Annotated doesn't support generics in metadata, see:
-    # https://discuss.python.org/t/generics-in-metadata-of-annotated/62059
     def __class_getitem__(cls, item: T) -> Any:
         """Return an annotated numpy array with the provided element type."""
         return Annotated[
@@ -50,7 +44,6 @@ class Array(Generic[T], np.ndarray[Any, np.dtype[np.object_]]):
 
 
 class TypeCheckMemo(NamedTuple):
-    """Named tuple to store memoization data for type checking."""
 
     globals: dict[str, Any] | None
     locals: dict[str, Any] | None
@@ -144,11 +137,9 @@ def _compare_annotated_types(
     incoming_primary, *incoming_metadata = get_args(incoming_type)
     required_primary, *required_metadata = get_args(required_type)
 
-    # Recursively check the primary types
     if not is_type_compatible(incoming_primary, required_primary, memo):
         return False
 
-    # Compare metadata (extras)
     incoming_array_element_type = _extract_array_element_type(incoming_metadata)
     required_array_element_type = _extract_array_element_type(required_metadata)
     if incoming_array_element_type is not None and required_array_element_type is not None:
@@ -192,7 +183,6 @@ def _handle_generic_types(
     incoming_origin = get_origin(incoming_type) or incoming_type
     required_origin = get_origin(required_type) or required_type
 
-    # Handle Annotated types
     if incoming_origin is Annotated and required_origin is Annotated:
         return _compare_annotated_types(incoming_type, required_type, memo)
     if incoming_origin is Annotated:
@@ -200,7 +190,6 @@ def _handle_generic_types(
     if required_origin is Annotated:
         return _compare_single_annotated_type(required_type, incoming_type, memo)
 
-    # Handle generic types
     if incoming_origin and required_origin:
         if not _compare_generic_type_origins(incoming_origin, required_origin):
             return False
@@ -223,16 +212,11 @@ def is_type_compatible(  # noqa: PLR0911
     required_type = _resolve_type(required_type, memo)
 
     if isinstance(incoming_type, TypeVar):
-        # TODO: the incoming type needs to be resolved to a concrete type
-        # using the types of the arguments passed to the function. This might
-        # require a more complex implementation. For now, we just return True.
         return True
 
     if _check_identical_or_any(incoming_type, required_type):
         return True
     if _is_polars_dataframe_to_lazyframe(incoming_type, required_type):
-        # pipefunc converts `pl.DataFrame` values to `pl.LazyFrame` at execution
-        # time when the consuming parameter is annotated as `pl.LazyFrame`.
         return True
     if (result := _is_typevar_compatible(incoming_type, required_type, memo)) is not None:
         return result
@@ -282,10 +266,8 @@ def is_object_array_type(tp: Any) -> bool:
     2. `numpy.ndarray[Any, numpy.dtype[numpy.object_]]`
     """
     if get_origin(tp) is np.ndarray:
-        # Base case: directly an np.ndarray[Any, np.dtype[np.object_]]
         return get_args(tp) == (Any, np.dtype[np.object_])
     if get_origin(tp) is Annotated:
-        # Recursive case: strip the Annotated and check the first argument
         array_type, _ = get_args(tp)
         return is_object_array_type(array_type)
 
@@ -293,7 +275,6 @@ def is_object_array_type(tp: Any) -> bool:
 
 
 class Unresolvable:  # noqa: PLW1641
-    """Class to represent an unresolvable type hint."""
 
     def __init__(self, type_str: str) -> None:
         """Initialize the Unresolvable instance."""
@@ -364,15 +345,11 @@ def type_as_string(type_: Any) -> str:  # noqa: PLR0911
     if hasattr(type_, "__name__"):
         return _clean_type_string(type_.__name__)
 
-    # Fall back to string representation if all else fails
     return _clean_type_string(str(type_))
 
 
 def _clean_type_string(type_str: str) -> str:
-    # Remove 'typing.' prefix
     type_str = re.sub(r"\btyping\.", "", type_str)
-    # Remove 'collections.abc.' prefix
     type_str = re.sub(r"\bcollections\.abc\.", "", type_str)
-    # Replace 'UnionType' with 'Union'
     type_str = re.sub(r"\bUnionType\b", "Union", type_str)
     return type_str  # noqa: RET504

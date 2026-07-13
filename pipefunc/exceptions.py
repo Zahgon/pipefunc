@@ -1,4 +1,3 @@
-"""Define error-related classes for `pipefunc`."""
 
 from __future__ import annotations
 
@@ -24,16 +23,13 @@ if TYPE_CHECKING:
 
 
 class UnusedParametersError(ValueError):
-    """Exception raised when unused parameters are provided to a function."""
+    pass
 
 
-def _timestamp() -> str:
-    return datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
 
 
 @dataclass
 class ErrorSnapshot:
-    """A snapshot that represents an error in a function call."""
 
     function: Callable[..., Any]
     exception: Exception
@@ -89,24 +85,15 @@ class ErrorSnapshot:
         )
 
     def reproduce(self) -> Any | None:
-        """Attempt to recreate the error by calling the function with stored arguments."""
-        return self.function(*self.args, **self.kwargs)
+        pass
 
     def save_to_file(self, filename: str | Path) -> None:
-        """Save the error snapshot to a file using cloudpickle."""
-        with open(filename, "wb") as f:  # noqa: PTH123
-            cloudpickle.dump(self, f)
+        pass
 
     @classmethod
     def load_from_file(cls, filename: str | Path) -> ErrorSnapshot:
-        """Load an error snapshot from a file using cloudpickle."""
-        with open(filename, "rb") as f:  # noqa: PTH123
-            return cloudpickle.load(f)
+        pass
 
-    def _ipython_display_(self) -> None:  # pragma: no cover
-        from IPython.display import HTML, display
-
-        display(HTML(f"<pre>{self}</pre>"))
 
     def __getstate__(self) -> dict[str, Any]:
         """Custom pickling to handle function references using cloudpickle."""
@@ -123,7 +110,6 @@ class ErrorSnapshot:
 
 @dataclass
 class PropagatedErrorSnapshot:
-    """Represents a function that was skipped due to upstream errors."""
 
     error_info: dict[str, ErrorInfo]  # parameter -> error details
     skipped_function: Callable[..., Any]
@@ -157,7 +143,6 @@ class PropagatedErrorSnapshot:
         from pipefunc._error_handling import cloudpickle_function_state
 
         state = cloudpickle_function_state(self.__dict__.copy(), "skipped_function")
-        # Also handle nested ErrorSnapshots in error_info
         state["error_info"] = self._pickle_error_info(self.error_info)
         return state
 
@@ -166,7 +151,6 @@ class PropagatedErrorSnapshot:
         from pipefunc._error_handling import cloudunpickle_function_state
 
         state = cloudunpickle_function_state(state, "skipped_function")
-        # Restore error_info
         state["error_info"] = self._unpickle_error_info(state["error_info"])
         self.__dict__.update(state)
 
@@ -174,62 +158,13 @@ class PropagatedErrorSnapshot:
         self,
         error_info: dict[str, ErrorInfo],
     ) -> dict[str, dict[str, Any]]:
-        """Helper to pickle error_info dict that may contain ErrorSnapshots."""
-        pickled_info = {}
-        for param, info in error_info.items():
-            # Convert ErrorInfo to dict for pickling
-            info_dict = {
-                "type": info.type,
-                "shape": info.shape,
-                "error_indices": info.error_indices,
-                "error_count": info.error_count,
-            }
-            if info.type == "full" and info.error is not None:
-                # The error might be an ErrorSnapshot or PropagatedErrorSnapshot
-                # Let their own __getstate__ handle it
-                info_dict["error"] = cloudpickle.dumps(info.error)
-            pickled_info[param] = info_dict
-        return pickled_info
+        pass
 
     def _unpickle_error_info(
         self,
         pickled_info: dict[str, dict[str, Any]],
     ) -> dict[str, ErrorInfo]:
-        """Helper to unpickle error_info dict."""
-        from pipefunc._error_handling import ErrorInfo
-
-        error_info = {}
-        for param, info_dict in pickled_info.items():
-            if info_dict["type"] == "full" and "error" in info_dict:
-                serialized_error = info_dict["error"]
-                if isinstance(serialized_error, bytes):
-                    error = cloudpickle.loads(serialized_error)
-                else:
-                    # NOTE: v0.88 stores serialized bytes, while
-                    # older snapshots stored the ErrorSnapshot directly.
-                    error = serialized_error
-                error_info[param] = ErrorInfo.from_full_error(error)
-            else:
-                error_info[param] = ErrorInfo(
-                    type=info_dict["type"],
-                    shape=info_dict.get("shape"),
-                    error_indices=info_dict.get("error_indices"),
-                    error_count=info_dict.get("error_count"),
-                )
-        return error_info
+        pass
 
     def get_root_causes(self) -> list[ErrorSnapshot]:
-        """Extract all original ErrorSnapshot objects (for full-error inputs).
-
-        For array-containing errors (reductions), this currently returns an
-        empty list. Downstream code can still rely on `reason` and
-        `error_info` metadata to understand which parameters contained errors.
-        """
-        root_causes: list[ErrorSnapshot] = []
-        for info in self.error_info.values():
-            if info.type == "full" and info.error is not None:
-                if isinstance(info.error, PropagatedErrorSnapshot):
-                    root_causes.extend(info.error.get_root_causes())
-                elif isinstance(info.error, ErrorSnapshot):
-                    root_causes.append(info.error)
-        return root_causes
+        pass

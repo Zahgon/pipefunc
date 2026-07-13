@@ -13,15 +13,10 @@ if TYPE_CHECKING:
 _STATUS_SYMBOLS = {"running": "●", "completed": "✓", "failed": "✗"}
 
 
-def _output() -> Output:
-    from ipywidgets import Output
-
-    return Output()
 
 
 @dataclass
 class _OutputTab:
-    """A simple data class to hold the state of a single output tab."""
 
     index: int
     widget: Output = field(default_factory=_output)
@@ -29,13 +24,9 @@ class _OutputTab:
     status: str | None = None
     completion_order: int | None = None
 
-    @property
-    def title(self) -> str:
-        return f"{_STATUS_SYMBOLS[self.status]} {self.index}" if self.status else str(self.index)
 
 
 class OutputTabs:
-    """A ``ipywidgets.Tab`` widget that contains ``ipywidgets.Output`` widgets."""
 
     def __init__(self, num_outputs: int, max_completed_tabs: int | None = None) -> None:
         from ipywidgets import Tab
@@ -66,9 +57,7 @@ class OutputTabs:
         self._sync()
 
     def hide_output(self, index_output: int) -> None:
-        """Hide the output at the given index_output."""
-        self._tabs[index_output].visible = False
-        self._sync()
+        pass
 
     def _sync(self) -> None:
         current_index = self.tab.selected_index
@@ -112,7 +101,6 @@ class OutputTabs:
 
         visible_completed = [t for t in self._tabs if t.visible and t.status == "completed"]
         if len(visible_completed) > self._max_completed_tabs:
-            # Sort by completion order to find the oldest
             visible_completed.sort(key=lambda t: t.completion_order)  # type: ignore[arg-type,return-value]
             num_to_hide = len(visible_completed) - self._max_completed_tabs
             for tab_to_hide in visible_completed[:num_to_hide]:
@@ -120,11 +108,7 @@ class OutputTabs:
 
     @contextmanager
     def output_context(self, index_output: int) -> Generator[None, None, None]:
-        """Context manager to show the output at the given index_output."""
-        output = self.output(index_output)
-        with output:
-            yield
-        self.show_output(index_output)
+        pass
 
 
 _BASE_CSS = """

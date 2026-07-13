@@ -18,22 +18,6 @@ if TYPE_CHECKING:
 PointType: TypeAlias = tuple[Int, Any]
 
 
-def _adaptive_wrapper(
-    _adaptive_value: float | tuple[float, ...],
-    *,
-    pipeline: Pipeline,
-    kwargs: dict[str, Any],
-    adaptive_dimensions: tuple[str, ...],
-    adaptive_output: str,
-    output_name: str,
-    full_output: bool = False,
-) -> float | dict[str, Any]:
-    values: tuple[float, ...] = at_least_tuple(_adaptive_value)
-    kwargs_ = kwargs.copy()
-    for dim, val in zip(adaptive_dimensions, values):
-        kwargs_[dim] = val
-    results = pipeline.run(output_name, kwargs=kwargs_, full_output=True)
-    return results if full_output else results[adaptive_output]
 
 
 def to_adaptive_learner(

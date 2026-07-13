@@ -12,10 +12,6 @@ if TYPE_CHECKING:
 
 
 class HeadlessProgressTracker(ProgressTrackerBase):
-    """Simple progress tracker without a UI.
-
-    This is useful for running pipelines in a non-interactive environment.
-    """
 
     def __init__(
         self,
@@ -37,21 +33,15 @@ class HeadlessProgressTracker(ProgressTrackerBase):
 
     def update_progress(self, _: Any = None, *, force: bool = False) -> None:
         """Update the progress values."""
-        # no-op
 
     def _mark_completed(self) -> None:
         """Mark the progress as completed."""
-        # no-op
 
     def _cancel_calculation(self, _: Any) -> None:  # pragma: no cover
-        """Cancel the ongoing calculation."""
-        if self.task is not None:
-            self.task.cancel()
+        pass
 
     def _update_auto_update_interval_text(self, new_interval: float) -> None:
         """Update the auto-update interval text."""
-        # no-op
 
     def display(self) -> None:
         """Display the progress bars."""
-        # no-op

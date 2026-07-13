@@ -1,4 +1,3 @@
-"""Helpers for inspecting persisted pipeline runs from disk."""
 
 from __future__ import annotations
 

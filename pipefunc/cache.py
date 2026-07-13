@@ -1,4 +1,3 @@
-"""Provides `pipefunc.cache` module with cache classes for memoization and caching."""
 
 from __future__ import annotations
 
@@ -71,14 +70,11 @@ def _fingerprint_callable(obj: Any) -> str | None:
             ),
         )
     if callable(obj) and not inspect.isroutine(obj) and not inspect.isclass(obj):
-        # A callable class instance: fingerprint its class.
         return _fingerprint_callable(type(obj))
     return None
 
 
 def _code_repr(code: types.CodeType) -> str:
-    # `repr` of a code object contains its memory address, so expand nested
-    # code objects (e.g., of inner functions and comprehensions) recursively.
     consts = tuple(
         _code_repr(c) if isinstance(c, types.CodeType) else repr(c) for c in code.co_consts
     )
@@ -127,35 +123,6 @@ class _CacheBase(abc.ABC):
 
 
 class HybridCache(_CacheBase):
-    """A hybrid cache implementation.
-
-    This uses a combination of Least Frequently Used (LFU) and
-    Least Computationally Expensive (LCE) strategies for invalidating cache entries.
-
-    The cache invalidation strategy calculates a score for each entry based on its
-    access frequency and computation duration. The entry with the lowest score will
-    be invalidated when the cache reaches its maximum size.
-
-    Attributes
-    ----------
-    max_size
-        The maximum number of entries the cache can store.
-    access_weight
-        The weight given to the access frequency in the score calculation.
-    duration_weight
-        The weight given to the computation duration in the score calculation.
-    allow_cloudpickle
-        Use cloudpickle for storing the data in memory if using shared memory.
-    shared
-        Whether the cache should be shared between multiple processes.
-    copy
-        Whether to store and return deep copies of the values when the cache is
-        not shared (a shared cache already (de)serializes the values, which has
-        the same effect). This prevents mutations of returned values (or of the
-        original object after storing) from leaking into the cache. Set to
-        ``False`` to avoid the copy overhead for large values that are never mutated.
-
-    """
 
     def __init__(
         self,
@@ -197,21 +164,11 @@ class HybridCache(_CacheBase):
 
     @property
     def access_counts(self) -> dict[Hashable, int]:
-        """Return the access counts of the cache entries."""
-        if not self.shared:
-            assert isinstance(self._access_counts, dict)
-            return self._access_counts
-        with self._cache_lock:
-            return dict(self._access_counts.items())
+        pass
 
     @property
     def computation_durations(self) -> dict[Hashable, float]:
-        """Return the computation durations of the cache entries."""
-        if not self.shared:
-            assert isinstance(self._computation_durations, dict)
-            return self._computation_durations
-        with self._cache_lock:
-            return dict(self._computation_durations.items())
+        pass
 
     def get(self, key: Hashable) -> Any | None:
         """Retrieve a value from the cache by its key.
@@ -237,7 +194,6 @@ class HybridCache(_CacheBase):
         if self._allow_cloudpickle and self.shared:
             value = cloudpickle.loads(value)
         elif not self.shared and self._copy:
-            # A shared cache returns a fresh copy via the manager proxy already.
             value = _try_deepcopy(value)
         return value
 
@@ -270,7 +226,6 @@ class HybridCache(_CacheBase):
 
     def _expire(self) -> None:
         """Invalidate the entry with the lowest score based on the access frequency."""
-        # Calculate normalized access frequencies and computation durations
         total_access_count = sum(self._access_counts.values())
         total_duration = sum(self._computation_durations.values())
         normalized_access_counts = {
@@ -280,25 +235,19 @@ class HybridCache(_CacheBase):
             k: v / total_duration for k, v in self._computation_durations.items()
         }
 
-        # Calculate scores using a weighted sum
         scores = {
             k: self.access_weight * normalized_access_counts[k]
             + self.duration_weight * normalized_durations[k]
             for k in self._access_counts
         }
 
-        # Find the key with the lowest score
         lowest_score_key = min(scores, key=lambda k: scores[k])
         del self._cache_dict[lowest_score_key]
         del self._access_counts[lowest_score_key]
         del self._computation_durations[lowest_score_key]
 
     def clear(self) -> None:
-        """Clear the cache."""
-        with self._cache_lock:
-            self._cache_dict.clear()
-            self._access_counts.clear()
-            self._computation_durations.clear()
+        pass
 
     def __contains__(self, key: Hashable) -> bool:
         """Check if a key is present in the cache.
@@ -340,11 +289,9 @@ class HybridCache(_CacheBase):
         state = self.__dict__.copy()
 
         if self.shared:
-            # Convert shared structures to regular ones
             state["_cache_dict"] = _dict_to_regular(self._cache_dict)
             state["_access_counts"] = _dict_to_regular(self._access_counts)
             state["_computation_durations"] = _dict_to_regular(self._computation_durations)
-            # Remove unpicklable lock
             state.pop("_cache_lock", None)
 
         return state
@@ -366,24 +313,6 @@ def _maybe_load(value: bytes | str, allow_cloudpickle: bool) -> Any:
 
 
 class LRUCache(_CacheBase):
-    """A shared memory LRU cache implementation.
-
-    Parameters
-    ----------
-    max_size
-        Cache size of the LRU cache, by default 128.
-    allow_cloudpickle
-        Use cloudpickle for storing the data in memory if using shared memory.
-    shared
-        Whether the cache should be shared between multiple processes.
-    copy
-        Whether to store and return deep copies of the values when the cache is
-        not shared (a shared cache already (de)serializes the values, which has
-        the same effect). This prevents mutations of returned values (or of the
-        original object after storing) from leaking into the cache. Set to
-        ``False`` to avoid the copy overhead for large values that are never mutated.
-
-    """
 
     def __init__(
         self,
@@ -417,13 +346,11 @@ class LRUCache(_CacheBase):
             return None
         with self._cache_lock:
             value = self._cache_dict[key]
-            # Move key to back of queue
             self._cache_queue.remove(key)
             self._cache_queue.append(key)
         if self._allow_cloudpickle and self.shared:
             return cloudpickle.loads(value)
         if not self.shared and self._copy:
-            # A shared cache returns a fresh copy via the manager proxy already.
             return _try_deepcopy(value)
         return value
 
@@ -461,22 +388,15 @@ class LRUCache(_CacheBase):
         return len(self._cache_dict)
 
     def clear(self) -> None:
-        """Clear the cache."""
-        with self._cache_lock:
-            keys = list(self._cache_dict.keys())
-            for key in keys:
-                del self._cache_dict[key]
-            del self._cache_queue[:]
+        pass
 
     def __getstate__(self) -> dict[str, Any]:
         """Prepare the object for pickling."""
         state = self.__dict__.copy()
 
         if self.shared:
-            # Convert shared structures to regular ones
             state["_cache_dict"] = _dict_to_regular(self._cache_dict)
             state["_cache_queue"] = _list_to_regular(self._cache_queue)
-            # Remove unpicklable lock
             state.pop("_cache_lock", None)
 
         return state
@@ -493,17 +413,6 @@ class LRUCache(_CacheBase):
 
 
 class SimpleCache(_CacheBase):
-    """A simple cache without any eviction strategy.
-
-    Parameters
-    ----------
-    copy
-        Whether to store and return deep copies of the values. This prevents
-        mutations of returned values (or of the original object after storing)
-        from leaking into the cache. Set to ``False`` to avoid the copy overhead
-        for large values that are never mutated.
-
-    """
 
     def __init__(self, *, copy: bool = True) -> None:
         """Initialize the cache."""
@@ -533,41 +442,10 @@ class SimpleCache(_CacheBase):
         return len(self._cache_dict)
 
     def clear(self) -> None:
-        """Clear the cache."""
-        keys = list(self._cache_dict.keys())
-        for key in keys:
-            del self._cache_dict[key]
+        pass
 
 
 class DiskCache(_CacheBase):
-    """Disk cache implementation using pickle or cloudpickle for serialization.
-
-    Parameters
-    ----------
-    cache_dir
-        The directory where the cache files are stored.
-    max_size
-        The maximum number of cache files to store. If None, no limit is set.
-    use_cloudpickle
-        Use cloudpickle for storing the data in memory.
-    with_lru_cache
-        Use an in-memory LRU cache to prevent reading from disk too often.
-    lru_cache_size
-        The maximum size of the in-memory LRU cache. Only used if with_lru_cache is True.
-    lru_shared
-        Whether the in-memory LRU cache should be shared between multiple processes.
-    permissions
-        The file permissions to set for the cache files.
-        If None, the default permissions are used.
-        Some examples:
-
-            - 0o660 (read/write for owner and group, no access for others)
-            - 0o644 (read/write for owner, read-only for group and others)
-            - 0o777 (read/write/execute for everyone - generally not recommended)
-            - 0o600 (read/write for owner, no access for group and others)
-            - None (use the system's default umask)
-
-    """
 
     def __init__(
         self,
@@ -659,12 +537,7 @@ class DiskCache(_CacheBase):
         return len(files)
 
     def clear(self) -> None:
-        """Clear the cache by deleting all cache files."""
-        for file_path in self._all_files():
-            with suppress(PermissionError, FileNotFoundError):
-                file_path.unlink()
-        if self.with_lru_cache:
-            self.lru_cache.clear()
+        pass
 
     @property
     def cache(self) -> dict:
@@ -676,13 +549,10 @@ class DiskCache(_CacheBase):
 
     @property
     def shared(self) -> bool:
-        """Return whether the cache is shared."""
-        return self.lru_cache.shared if self.with_lru_cache else True
+        pass
 
 
 def _pickle_key(obj: Any) -> str:
-    # Based on the implementation of `diskcache` although that also
-    # does pickle_tools.optimize which we don't need here
     data = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
     return hashlib.md5(data).hexdigest()  # noqa: S324
 
@@ -738,37 +608,6 @@ def memoize(
     if cache is None:
         cache = SimpleCache()
 
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            if key_func:
-                key = key_func(*args, **kwargs)
-            else:
-                key = try_to_hashable(  # type: ignore[assignment]
-                    (args, kwargs),
-                    fallback_to_pickle,
-                    unhashable_action,
-                    func.__name__,
-                )
-                if key is UnhashableError:
-                    return func(*args, **kwargs)
-
-            if key in cache:
-                return cache.get(key)
-
-            if isinstance(cache, HybridCache):
-                t_start = time.monotonic()
-            result = func(*args, **kwargs)
-            if isinstance(cache, HybridCache):
-                # For HybridCache, we need to provide a duration
-                # Here, we're using a default duration of 1.0
-                cache.put(key, result, time.monotonic() - t_start)
-            else:
-                cache.put(key, result)
-            return result
-
-        wrapper.cache = cache  # type: ignore[attr-defined]
-        return wrapper
 
     return decorator
 
@@ -850,7 +689,6 @@ def _hashable_mapping(
     return tuple((k, to_hashable(v, fallback_to_pickle)) for k, v in items)
 
 
-# Unique string added to hashable representations to avoid hash collisions
 _HASH_MARKER = "__CONVERTED__"
 
 
@@ -921,22 +759,18 @@ def to_hashable(  # noqa: C901, PLR0911, PLR0912
     if isinstance(obj, array.array):
         return (m, tp, (obj.typecode, tuple(obj)))
 
-    # Handle numpy arrays
     if "numpy" in sys.modules and isinstance(obj, sys.modules["numpy"].ndarray):
         return (m, tp, (obj.shape, obj.dtype.str, tuple(obj.flatten())))
 
-    # Handle pandas Series and DataFrames
     if "pandas" in sys.modules:
         if isinstance(obj, sys.modules["pandas"].Series):
             return (m, tp, (obj.name, to_hashable(obj.to_dict(), fallback_to_pickle)))
         if isinstance(obj, sys.modules["pandas"].DataFrame):
             return (m, tp, to_hashable(obj.to_dict("list"), fallback_to_pickle))
 
-    # Handle polars Series and DataFrames
     if "polars" in sys.modules:
         polars = sys.modules["polars"]
         if isinstance(obj, polars.Series):
-            # Include dtype to distinguish Series with different dtypes but same values
             hsh = (
                 obj.name,
                 str(obj.dtype),
@@ -947,8 +781,6 @@ def to_hashable(  # noqa: C901, PLR0911, PLR0912
             hsh = to_hashable(obj.to_dict(as_series=False), fallback_to_pickle)
             return (m, tp, hsh)
         if isinstance(obj, polars.LazyFrame):
-            # Hash the serialized query plan; collecting the data here would
-            # defeat the purpose of using a LazyFrame.
             return (m, tp, obj.serialize())
 
     if fallback_to_pickle:
@@ -960,7 +792,6 @@ def to_hashable(  # noqa: C901, PLR0911, PLR0912
 
 
 class UnhashableError(TypeError):
-    """Exception raised for objects that cannot be made hashable."""
 
     def __init__(self, obj: Any) -> None:
         self.obj = obj
@@ -970,26 +801,17 @@ class UnhashableError(TypeError):
         super().__init__(self.message)
 
 
-# Helper functions for pickling
 def _dict_to_regular(shared_dict: DictProxy) -> dict:
-    """Convert a shared dictionary to a regular dictionary."""
-    return dict(shared_dict.items())
+    pass
 
 
 def _list_to_regular(shared_list: ListProxy) -> list:
-    """Convert a shared list to a regular list."""
-    return list(shared_list)
+    pass
 
 
 def _create_shared_dict(manager: SyncManager, regular_dict: dict) -> DictProxy:
-    """Create a shared dictionary and populate it."""
-    shared_dict = manager.dict()
-    shared_dict.update(regular_dict)
-    return shared_dict
+    pass
 
 
 def _create_shared_list(manager: SyncManager, regular_list: list) -> ListProxy:
-    """Create a shared list and populate it."""
-    shared_list = manager.list()
-    shared_list.extend(regular_list)
-    return shared_list
+    pass

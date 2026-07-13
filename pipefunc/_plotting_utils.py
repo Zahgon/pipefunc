@@ -16,7 +16,6 @@ ScopeName = str
 
 
 class CollapsedScope(NestedPipeFunc):
-    """A collapsed scope in the pipeline graph."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -50,7 +49,6 @@ def collapsed_scope_graph(
     """
     from pipefunc._pipeline._base import Pipeline
 
-    # 1. Group functions by scope
     grouped_funcs: dict[ScopeName, list[PipeFunc]] = defaultdict(list)
     other_funcs: list[PipeFunc] = []
 
@@ -61,7 +59,6 @@ def collapsed_scope_graph(
         else:
             other_funcs.append(func)
 
-    # Remove groups with just one function
     for scope in list(grouped_funcs.keys()):
         if len(grouped_funcs[scope]) == 1:
             func = grouped_funcs.pop(scope)[0]
@@ -70,7 +67,6 @@ def collapsed_scope_graph(
     if not grouped_funcs:
         return graph
 
-    # 2. Check each scope group for potential cycles
     new_pipeline_funcs = other_funcs[:]
 
     for scope, funcs_in_scope in grouped_funcs.items():
@@ -103,29 +99,24 @@ def _would_create_cycle(graph: nx.DiGraph, funcs_to_collapse: list[PipeFunc]) ->
     if len(funcs_to_collapse) <= 1:
         return False
 
-    # Create a temporary "merged node" in a copy of the graph
     temp_graph = graph.copy()
     merged_node = "TEMP_MERGED_NODE"
     temp_graph.add_node(merged_node)
 
-    # Connect all incoming edges to the merged node
     for func in funcs_to_collapse:
         for predecessor in graph.predecessors(func):
             if predecessor not in funcs_to_collapse:
                 temp_graph.add_edge(predecessor, merged_node)
 
-    # Connect all outgoing edges from the merged node
     for func in funcs_to_collapse:
         for successor in graph.successors(func):
             if successor not in funcs_to_collapse:
                 temp_graph.add_edge(merged_node, successor)
 
-    # Remove the original nodes
     for func in funcs_to_collapse:
         if temp_graph.has_node(func):  # Check needed due to previous removals
             temp_graph.remove_node(func)
 
-    # Check if the resulting graph has cycles
     try:
         nx.find_cycle(temp_graph, orientation="original")
         return True  # Cycle found  # noqa: TRY300
@@ -142,12 +133,10 @@ def _find_exclusive_parameters(
     for node in graph.nodes:
         if isinstance(node, str):
             successors = list(graph.successors(node))
-            # Check if it has exactly one successor which is a PipeFunc
             if len(successors) == 1 and isinstance(successors[0], PipeFunc):
                 target_func = successors[0]
                 grouped_params[target_func].append(node)
 
-    # Sort the parameters within each group for consistent labeling
     for func in grouped_params:  # noqa: PLC0206
         grouped_params[func].sort()
 
@@ -192,7 +181,6 @@ def create_grouped_parameter_graph(
 
 @dataclass(frozen=True)
 class GroupedArgs:
-    """A tuple of exclusive input parameters for a function."""
 
     args: tuple[str, ...]
 
@@ -205,7 +193,6 @@ def hide_default_args_graph(graph: nx.DiGraph, defaults: dict[str, Any]) -> nx.D
     new_graph = graph.copy()
     for key in defaults:
         if key not in new_graph:  # pragma: no cover
-            # This should not happen!
             msg = f"Default argument '{key}' not found in graph, please report this as a bug."
             raise RuntimeError(msg)
         new_graph.remove_node(key)

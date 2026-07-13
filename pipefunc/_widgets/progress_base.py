@@ -1,4 +1,3 @@
-# pipefunc/_widgets/progress_base.py
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 
 class ProgressTrackerBase(ABC):
-    """Base class for progress trackers with auto-update functionality."""
 
     MIN_AUTO_UPDATE_INTERVAL = 0.1
     MAX_AUTO_UPDATE_INTERVAL = 10.0
@@ -89,7 +87,6 @@ class ProgressTrackerBase(ABC):
             elapsed_time = current_time - status.start_time
             progress_rate = status.progress / elapsed_time
             estimated_time_for_target = self.target_progress_change / progress_rate
-            # Estimate time for target progress change
             shortest_interval = min(shortest_interval, estimated_time_for_target)
         return min(max(shortest_interval, min_interval), max_interval)
 

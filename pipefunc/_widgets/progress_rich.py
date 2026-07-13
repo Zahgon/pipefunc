@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
 
 class RichProgressTracker(ProgressTrackerBase):
-    """Text-based progress tracker using rich.progress."""
 
     def __init__(
         self,
@@ -43,7 +42,6 @@ class RichProgressTracker(ProgressTrackerBase):
             in_async=in_async,
         )
 
-        # Rich-specific attributes
         self._console = Console()
         self._progress = Progress(
             SpinnerColumn(),
@@ -58,7 +56,6 @@ class RichProgressTracker(ProgressTrackerBase):
         )
         self._task_ids: dict[OUTPUT_TYPE, TaskID] = {}
 
-        # Create tasks in the progress bar
         for name, status in self.progress_dict.items():
             description = ", ".join(at_least_tuple(name))
             elapsed_time = status.elapsed_time()
@@ -110,7 +107,6 @@ class RichProgressTracker(ProgressTrackerBase):
 
     def _mark_completed(self) -> None:
         if self._completed:  # pragma: no cover
-            # Avoids printing twice, doesn't happen in tests, but is possible in real life
             return
         self._completed = True
         if any(status.n_failed > 0 for status in self.progress_dict.values()):
@@ -120,26 +116,10 @@ class RichProgressTracker(ProgressTrackerBase):
         self._stop()
 
     def _cancel_calculation(self, _: Any) -> None:
-        """Cancel the ongoing calculation."""
-        if self.task is not None:
-            self.task.cancel()
-        self.update_progress(force=True)
-        self._console.print("\n[bold red]Calculation cancelled ❌[/bold red]")
-
-        # Mark incomplete tasks as cancelled
-        for name, status in self.progress_dict.items():
-            if status.progress < 1.0:
-                task_id = self._task_ids[name]
-                description = (
-                    f"[bold red]❌ {', '.join(at_least_tuple(name))} (cancelled)[/bold red]"
-                )
-                self._progress.update(task_id, description=description)
-
-        self._stop()
+        pass
 
     def _update_auto_update_interval_text(self, new_interval: float) -> None:
         """Update the auto-update interval text."""
-        # no-op
 
     def display(self) -> None:
         """Display the progress bars using Rich Live display."""
@@ -157,7 +137,6 @@ class RichProgressTracker(ProgressTrackerBase):
 def _format_time(seconds: float | None) -> str:
     if seconds is None:
         return "--:--"
-    # Based on https://github.com/tqdm/tqdm/blob/master/tqdm/std.py
     minutes, seconds = divmod(int(seconds), 60)
     hours, minutes = divmod(minutes, 60)
     if not hours:

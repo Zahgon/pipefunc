@@ -26,74 +26,15 @@ def simplified_pipeline(
     *,
     conservatively_combine: bool = False,
 ) -> Pipeline:
-    """Simplify pipeline with combined function nodes.
-
-    Generate a simplified version of the pipeline where combinable function
-    nodes have been merged into single function nodes.
-
-    This method identifies combinable nodes in the pipeline's execution
-    graph (i.e., functions that share the same root arguments) and merges
-    them into single `NestedPipeFunc` nodes. This results in a simplified pipeline
-    where each key function only depends on nodes that cannot be further
-    combined.
-
-    Returns
-    -------
-        The simplified version of the pipeline.
-
-    """
-    from pipefunc import PipeFunc, Pipeline
-
-    func = node_mapping[output_name]
-    assert isinstance(func, PipeFunc)
-    combinable_nodes = _identify_combinable_nodes(
-        func,
-        graph,
-        all_root_args,
-        conservatively_combine=conservatively_combine,
-    )
-    if not combinable_nodes:
-        msg = "No combinable nodes found, the pipeline cannot be simplified."
-        raise ValueError(msg)
-
-    # Simplify the combinable_nodes dictionary by replacing any nodes that
-    # can be combined with their own dependencies, so that each key in the
-    # dictionary only depends on nodes that cannot be further combined.
-    combinable_nodes = _combine_nodes(combinable_nodes)
-    # Sort to ensure deterministic output
-    sorted_nodes = {k: _sort(combinable_nodes[k]) for k in _sort(combinable_nodes.keys())}
-    to_combine_flat = _flatten_dict(sorted_nodes)
-    funcs = [f for f in functions if f not in to_combine_flat]
-    all_inputs = {p for f in funcs for p in f.parameters}
-    nested_funcs = [[base, *combine] for base, combine in sorted_nodes.items()]
-    for i, to_combine in enumerate(nested_funcs):
-        output_name = _output_name(i, nested_funcs, all_inputs)
-        nested = NestedPipeFunc(to_combine, output_name=output_name)
-        funcs.append(nested)
-    return Pipeline(funcs)  # type: ignore[arg-type]
+    pass
 
 
-def _output_name(i: int, nested_funcs: list[list[PipeFunc]], all_inputs: set[str]) -> OUTPUT_TYPE:
-    to_combine = nested_funcs[i]
-    # Get all outputs for functions to combine
-    current_outputs = {n for f in to_combine for n in at_least_tuple(f.output_name)}
-    # Get inputs to all functions except the current one
-    other_inputs = {
-        p for j, fs in enumerate(nested_funcs) if j != i for f in fs for p in f.parameters
-    } | all_inputs
-    outputs_for_others = current_outputs & other_inputs
-    base = to_combine[0]
-    output_name_set = {*at_least_tuple(base.output_name), *outputs_for_others}
-    output_names = tuple(sorted(output_name_set))
-    return output_names[0] if len(output_names) == 1 else output_names
 
 
 def _sort(funcs: Iterable[PipeFunc]) -> list[PipeFunc]:
     return sorted(funcs, key=lambda f: f.output_name)
 
 
-def _flatten_dict(d: dict[PipeFunc, list[PipeFunc]]) -> list[PipeFunc]:
-    return [v for k, lst in d.items() for v in [k, *lst]]
 
 
 def _identify_combinable_nodes(
@@ -154,8 +95,6 @@ def _identify_combinable_nodes(
     current function being checked in the execution graph.
 
     """
-    # Nested function _recurse performs the depth-first search and updates the
-    # `combinable_nodes` dictionary.
 
     def _recurse(head: PipeFunc) -> None:
         head_args = all_root_args[head.output_name]
@@ -232,19 +171,3 @@ def _combine_nodes(
     return dict(combinable_nodes)
 
 
-def _func_node_colors(
-    functions: list[PipeFunc],
-    combinable_nodes: dict[PipeFunc, set[PipeFunc]],
-) -> list[str]:
-    combinable_nodes = _combine_nodes(combinable_nodes)
-    func_node_colors = []
-    node_sets = [{k, *v} for k, v in combinable_nodes.items()]
-    color_index = len(node_sets)  # for non-combinable nodes
-    for node in functions:
-        i = next((i for i, nodes in enumerate(node_sets) if node in nodes), None)
-        if i is not None:
-            func_node_colors.append(f"C{i}")
-        else:
-            func_node_colors.append(f"C{color_index}")
-            color_index += 1
-    return func_node_colors

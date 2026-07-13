@@ -1,10 +1,3 @@
-"""PipeFunc: A Python library for defining, managing, and executing function pipelines.
-
-This module implements the `PipeFunc` class, which is a function wrapper class for
-pipeline functions with additional attributes. It also provides a decorator `pipefunc`
-that wraps a function in a `PipeFunc` instance.
-These `PipeFunc` objects are used to construct a `pipefunc.Pipeline`.
-"""
 
 from __future__ import annotations
 
@@ -66,151 +59,7 @@ MAX_PARAMS_LEN = 15
 
 
 class PipeFunc(Generic[P, R]):
-    """Function wrapper class for pipeline functions with additional attributes.
 
-    Parameters
-    ----------
-    func
-        The original function to be wrapped.
-    output_name
-        The identifier for the output of the wrapped function.
-        Provide a tuple of strings for multiple outputs.
-    output_picker
-        A function that takes the output of the wrapped function as first argument
-        and the ``output_name`` (str) as second argument, and returns the desired output.
-        If ``None``, the output of the wrapped function is returned as is.
-    renames
-        A dictionary for renaming function arguments and outputs. The keys are the
-        original names (as defined in the function signature or the ``output_name``),
-        and the values are the new names to be used. This allows you to change how
-        the function is called without modifying its internal logic. For example,
-        ``{"old_name": "new_name"}`` would allow the function to be called with
-        ``new_name`` instead of ``old_name``. If renaming the ``output_name``, include it
-        in this dictionary as well.
-    defaults
-        Set defaults for parameters. Overwrites any current defaults. Must be in terms
-        of the renamed argument names.
-    bound
-        Bind arguments to the function. These are arguments that are fixed. Even when
-        providing different values, the bound values will be used. Must be in terms of
-        the renamed argument names.
-    profile
-        Flag indicating whether the wrapped function should be profiled.
-        Profiling is only available for sequential execution.
-    debug
-        Flag indicating whether debug information should be printed.
-    print_error
-        Flag indicating whether errors raised during the function execution should
-        be printed.
-    cache
-        Flag indicating whether the wrapped function should be cached.
-    mapspec
-        This is a specification for mapping that dictates how input values should
-        be merged together. If ``None``, the default behavior is that the input directly
-        maps to the output.
-    internal_shape
-        The shape of the output produced by this function *when it is used within a
-        ``mapspec`` context*. Can be an int or a tuple of ints, or "?" for unknown
-        dimensions, or a tuple with a mix of both. If not provided, the shape will be
-        inferred from the first execution of the function. If provided, the shape will be
-        validated against the actual shape of the output. This parameter is required only
-        when a `mapspec` like `... -> out[i]` is used, indicating that the shape cannot be
-        derived from the inputs. In case there are multiple outputs, provide the shape for
-        one of the outputs. This works because the shape of all outputs are required to be
-        identical.
-    post_execution_hook
-        A callback function that is invoked after the function is executed.
-        The callback signature is ``hook(func: PipeFunc, result: Any, kwargs: dict) -> None``.
-        This hook can be used for logging, visualization of intermediate results,
-        debugging, statistics collection, or other side effects. The hook is executed
-        synchronously after the function returns but before the result is passed to
-        the next function in the pipeline. Keep the hook lightweight to avoid impacting performance.
-    resources
-        A dictionary or `Resources` instance containing the resources required
-        for the function. This can be used to specify the number of CPUs, GPUs,
-        memory, wall time, queue, partition, and any extra job scheduler
-        arguments. This is *not* used by the `pipefunc` directly but can be
-        used by job schedulers to manage the resources required for the
-        function. Alternatively, provide a callable that receives a dict with the
-        input values and returns a `Resources` instance.
-    resources_variable
-        If provided, the resources will be passed as the specified argument name to the function.
-        This requires that the function has a parameter with the same name. For example,
-        if ``resources_variable="resources"``, the function will be called as
-        ``func(..., resources=Resources(...))``. This is useful when the function handles internal
-        parallelization.
-    resources_scope
-        Determines how resources are allocated in relation to the mapspec:
-
-        - "map": Allocate resources for the entire mapspec operation (default).
-        - "element": Allocate resources for each element in the mapspec.
-
-        If no mapspec is defined, this parameter is ignored.
-    scope
-        If provided, *all* parameter names and output names of the function will
-        be prefixed with the specified scope followed by a dot (``'.'``), e.g., parameter
-        ``x`` with scope ``foo`` becomes ``foo.x``. This allows multiple functions in a
-        pipeline to have parameters with the same name without conflict. To be selective
-        about which parameters and outputs to include in the scope, use the
-        `PipeFunc.update_scope` method.
-
-        When providing parameter values for functions that have scopes, they can
-        be provided either as a dictionary for the scope, or by using the
-        ``f'{scope}.{name}'`` notation. For example,
-        a `PipeFunc` instance with scope "foo" and "bar", the parameters
-        can be provided as: ``func(foo=dict(a=1, b=2), bar=dict(a=3, b=4))``
-        or ``func(**{"foo.a": 1, "foo.b": 2, "bar.a": 3, "bar.b": 4})``.
-    variant
-        Identifies this function as an alternative implementation in a
-        `VariantPipeline` and specifies which variant groups it belongs to.
-        When multiple functions share the same `output_name`, variants allow
-        selecting which implementation to use during pipeline execution.
-
-        Can be specified in two formats:
-        - A string (e.g., ``"fast"``): Places the function in the default unnamed
-          group (None) with the specified variant name. Equivalent to ``{None: "fast"}``.
-        - A dictionary (e.g., ``{"algorithm": "fast", "optimization": "level1"}``):
-          Assigns the function to multiple variant groups simultaneously, with a
-          specific variant name in each group.
-
-        Functions with the same `output_name` but different variant specifications
-        represent alternative implementations. The {meth}`VariantPipeline.with_variant`
-        method selects which variants to use for execution. For example, you might
-        have "preprocessing" variants ("v1"/"v2") independent from "computation"
-        variants ("fast"/"accurate"), allowing you to select specific combinations
-        like ``{"preprocessing": "v1", "computation": "fast"}``.
-    variant_group
-        DEPRECATED in v0.58.0: Use `variant` instead.
-
-    Returns
-    -------
-        A `PipeFunc` instance that wraps the original function with the specified return identifier.
-
-    Attributes
-    ----------
-    error_snapshot
-        If an error occurs while calling the function, this attribute will contain
-        an `ErrorSnapshot` instance with information about the error.
-
-    Examples
-    --------
-    >>> def add_one(a, b):
-    ...     return a + 1, b + 1
-    >>> add_one_func = PipeFunc(
-    ...     add_one,
-    ...     output_name="c",
-    ...     renames={"a": "x", "b": "y"},
-    ... )
-    >>> add_one_func(x=1, y=2)
-    (2, 3)
-    >>> add_one_func.update_defaults({"x": 1, "y": 1})
-    >>> add_one_func()
-    (2, 2)
-
-    """
-
-    # Prevent pytest from collecting `PipeFunc` instances whose wrapped function
-    # is named ``test*`` (pytest follows ``__wrapped__`` during collection).
     __test__ = False
 
     def __init__(
@@ -245,9 +94,6 @@ class PipeFunc(Generic[P, R]):
         self.__name__ = _get_name(func)
         doc = getattr(func, "__doc__", None)
         if doc and doc != getattr(type(func), "__doc__", None):
-            # Expose the wrapped function's docstring on the instance for
-            # `help()` and Jupyter's `?` introspection. The second check avoids
-            # picking up the *class* docstring of callable instances.
             self.__doc__ = doc
         self._output_name: OUTPUT_TYPE = output_name
         self.debug = debug
@@ -274,107 +120,28 @@ class PipeFunc(Generic[P, R]):
 
     @property
     def renames(self) -> dict[str, str]:
-        """Return the renames for the function arguments and output name.
-
-        See Also
-        --------
-        update_renames
-            Update the ``renames`` via this method.
-
-        """
-        # Is a property to prevent users mutating the renames directly
-        return self._renames
+        pass
 
     @property
     def bound(self) -> dict[str, Any]:
-        """Return the bound arguments for the function. These are arguments that are fixed.
-
-        See Also
-        --------
-        update_bound
-            Update the ``bound`` parameters via this method.
-
-        """
-        # Is a property to prevent users mutating `bound` directly
-        return self._bound
+        pass
 
     @functools.cached_property
     def output_name(self) -> OUTPUT_TYPE:
-        """Return the output name(s) of the wrapped function.
+        pass
 
-        Returns
-        -------
-            The output name(s) of the wrapped function.
-
-        """
-        return _rename_output_name(self._output_name, self._renames)
-
-    @functools.cached_property
-    def parameters(self) -> tuple[str, ...]:
-        return tuple(self._renames.get(k, k) for k in self.original_parameters)
 
     @property
     def original_parameters(self) -> dict[str, inspect.Parameter]:
-        """Return the original (before renames) parameters of the wrapped function.
-
-        Returns
-        -------
-            A mapping of the original parameters of the wrapped function to their
-            respective `inspect.Parameter` objects.
-
-        """
-        parameters = dict(inspect.signature(self.func).parameters)
-        if self.resources_variable is not None:
-            del parameters[self.resources_variable]
-        return parameters
+        pass
 
     @functools.cached_property
     def defaults(self) -> dict[str, Any]:
-        """Return the defaults for the function arguments.
-
-        Returns
-        -------
-            A dictionary of default values for the keyword arguments.
-
-        See Also
-        --------
-        update_defaults
-            Update the ``defaults`` via this method.
-
-        """
-        parameters = self.original_parameters
-        defaults = {}
-
-        # Handle dataclass case
-        if dataclasses.is_dataclass(self.func):
-            fields = dataclasses.fields(self.func)
-            for f in fields:
-                new_name = self._renames.get(f.name, f.name)
-                if new_name in self._defaults:
-                    defaults[new_name] = self._defaults[new_name]
-                elif f.default_factory is not dataclasses.MISSING:
-                    defaults[new_name] = f.default_factory()
-                elif f.default is not dataclasses.MISSING:
-                    defaults[new_name] = f.default
-            return defaults
-
-        # Handle pydantic case
-        if is_pydantic_base_model(self.func):
-            return _pydantic_defaults(self.func, self._renames, self._defaults)
-
-        # Handle regular function case
-        for original_name, v in parameters.items():
-            new_name = self._renames.get(original_name, original_name)
-            if new_name in self._defaults:
-                defaults[new_name] = self._defaults[new_name]
-            elif v.default is not inspect.Parameter.empty and new_name not in self._bound:
-                defaults[new_name] = v.default
-        return defaults
+        pass
 
     @functools.cached_property
     def _inverse_renames(self) -> dict[str, str]:
-        """Renames from current name to original name."""
-        return {v: k for k, v in self._renames.items()}
+        pass
 
     @functools.cached_property
     def output_picker(self) -> Callable[[Any, str], Any] | None:
@@ -389,24 +156,7 @@ class PipeFunc(Generic[P, R]):
         return self._output_picker
 
     def update_defaults(self, defaults: dict[str, Any], *, overwrite: bool = False) -> None:
-        """Update defaults to the provided keyword arguments.
-
-        Parameters
-        ----------
-        defaults
-            A dictionary of default values for the keyword arguments.
-        overwrite
-            Whether to overwrite the existing defaults. If ``False``, the new
-            defaults will be added to the existing defaults.
-
-        """
-        self._validate_update(defaults, "defaults", self.parameters)
-        if overwrite:
-            self._defaults = defaults.copy()
-        else:
-            self._defaults = dict(self._defaults, **defaults)
-        self._clear_internal_cache()
-        self._validate()
+        pass
 
     def update_renames(
         self,
@@ -445,7 +195,6 @@ class PipeFunc(Generic[P, R]):
         )
         self._validate_update(renames, "renames", allowed_parameters)
         if update_from == "current":
-            # Convert to `renames` in terms of original names
             renames = {
                 self._inverse_renames.get(k, k): v
                 for k, v in renames.items()
@@ -459,21 +208,18 @@ class PipeFunc(Generic[P, R]):
         else:
             self._renames = dict(self._renames, **renames)
 
-        # Update `defaults`
         new_defaults = {}
         for name, value in defaults_original.items():
             name = self._renames.get(name, name)  # noqa: PLW2901
             new_defaults[name] = value
         self._defaults = new_defaults
 
-        # Update `bound`
         new_bound = {}
         for name, value in bound_original.items():
             new_name = self._renames.get(name, name)
             new_bound[new_name] = value
         self._bound = new_bound
 
-        # Update `mapspec`
         if self.mapspec is not None:
             self.mapspec = self.mapspec.rename(old_inverse).rename(self._renames)
 
@@ -487,116 +233,13 @@ class PipeFunc(Generic[P, R]):
         outputs: set[str] | Literal["*"] | None = None,
         exclude: set[str] | None = None,
     ) -> None:
-        """Update the scope for the `PipeFunc` by adding (or removing) a prefix to the input and output names.
-
-        This method updates the names of the specified inputs and outputs by adding the provided
-        scope as a prefix. The scope is added to the names using the format `f"{scope}.{name}"`.
-        If an input or output name already starts with the scope prefix, it remains unchanged.
-        If there is an existing scope, it is replaced with the new scope.
-
-        Internally, simply calls `PipeFunc.update_renames` with  ``renames={name: f"{scope}.{name}", ...}``.
-
-        When providing parameter values for functions that have scopes, they can
-        be provided either as a dictionary for the scope, or by using the
-        ``f'{scope}.{name}'`` notation. For example,
-        a `PipeFunc` instance with scope "foo" and "bar", the parameters
-        can be provided as: ``func(foo=dict(a=1, b=2), bar=dict(a=3, b=4))``
-        or ``func(**{"foo.a": 1, "foo.b": 2, "bar.a": 3, "bar.b": 4})``.
-
-        Parameters
-        ----------
-        scope
-            The scope to set for the inputs and outputs. If ``None``, the scope of inputs and outputs is removed.
-        inputs
-            Specific input names to include, or "*" to include all inputs. If None, no inputs are included.
-        outputs
-            Specific output names to include, or "*" to include all outputs. If None, no outputs are included.
-        exclude
-            Names to exclude from the scope. This can include both inputs and outputs. Can be used with `inputs`
-            or `outputs` being "*" to exclude specific names.
-
-        Examples
-        --------
-        >>> f.update_scope("my_scope", inputs="*", outputs="*")  # Add scope to all inputs and outputs
-        >>> f.update_scope("my_scope", "*", "*", exclude={"output1"}) # Add to all except "output1"
-        >>> f.update_scope("my_scope", inputs="*", outputs={"output2"})  # Add scope to all inputs and "output2"
-        >>> f.update_scope(None, inputs="*", outputs="*")  # Remove scope from all inputs and outputs
-
-        """
-        if scope is not None and (
-            scope in self.unscoped_parameters or scope in at_least_tuple(self.output_name)
-        ):
-            msg = f"The provided `{scope=}` cannot be identical to the function input parameters or output name."
-            raise ValueError(msg)
-
-        if exclude is None:
-            exclude = set()
-
-        if inputs == "*":
-            inputs = set(self.parameters)
-        elif inputs is None:
-            inputs = set()
-        else:
-            inputs = set(inputs)  # Ensure it is a set
-
-        if outputs == "*":
-            outputs = set(at_least_tuple(self.output_name))
-        elif outputs is None:
-            outputs = set()
-        else:
-            outputs = set(outputs)  # Ensure it is a set
-
-        all_parameters = (inputs | outputs) - exclude
-        assert all_parameters
-        renames = {name: _prepend_name_with_scope(name, scope) for name in all_parameters}
-        self.update_renames(renames, update_from="current")
+        pass
 
     def update_mapspec_axes(self, renames: dict[str, str]) -> None:
-        """Update the MapSpec by renaming axes.
-
-        This method renames axes in the MapSpec while preserving the structure
-        of the array specifications. It uses the `MapSpec.rename_axes()` method
-        to perform type-safe axis renaming.
-
-        Parameters
-        ----------
-        renames
-            Dictionary mapping old axis names to new axis names.
-
-        Examples
-        --------
-        >>> @pipefunc(output_name="c", mapspec="a[i, j], b[i, j] -> c[i, j]")
-        ... def f(a, b):
-        ...     return a + b
-        >>> f.update_mapspec_axes({"i": "x", "j": "y"})
-        >>> str(f.mapspec)
-        'a[x, y], b[x, y] -> c[x, y]'
-
-        """
-        if self.mapspec is None:
-            return
-        self.mapspec = self.mapspec.rename_axes(renames)
-        self._clear_internal_cache()
+        pass
 
     def update_bound(self, bound: dict[str, Any], *, overwrite: bool = False) -> None:
-        """Update the bound arguments for the function that are fixed.
-
-        Parameters
-        ----------
-        bound
-            A dictionary of bound arguments for the function.
-        overwrite
-            Whether to overwrite the existing bound arguments. If ``False``, the new
-            bound arguments will be added to the existing bound arguments.
-
-        """
-        self._validate_update(bound, "bound", self.parameters)
-        if overwrite:
-            self._bound = bound.copy()
-        else:
-            self._bound = dict(self._bound, **bound)
-        self._clear_internal_cache()
-        self._validate()
+        pass
 
     def _clear_internal_cache(self, *, clear_pipelines: bool = True) -> None:
         clear_cached_properties(self, PipeFunc)
@@ -709,10 +352,7 @@ class PipeFunc(Generic[P, R]):
 
     @functools.cached_property
     def _evaluate_lazy(self) -> bool:
-        """Return whether the function should evaluate lazy arguments."""
-        # This is a cached property because it is slow and otherwise called multiple times.
-        # We assume that once it is set, it does not change during the lifetime of the object.
-        return any(p.lazy for p in self._pipelines)
+        pass
 
     def _rename_to_native(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         return {self._inverse_renames.get(k, k): v for k, v in kwargs.items()}
@@ -731,55 +371,6 @@ class PipeFunc(Generic[P, R]):
         """
         return self._call(*args, **kwargs)
 
-    def _call(self, *args: Any, **kwargs: Any) -> R:
-        evaluated_resources = kwargs.pop(_EVALUATED_RESOURCES, None)
-        kwargs = self._flatten_scopes(kwargs)
-        if extra := set(kwargs) - set(self.parameters):
-            msg = (
-                f"Unexpected keyword arguments: `{extra}`."
-                f" The allowed arguments are: `{self.parameters}`."
-                f" The provided arguments are: `{kwargs}`."
-            )
-            raise ValueError(msg)
-
-        if args:  # Put positional arguments into kwargs
-            for p, v in zip(self.parameters, args):
-                if p in kwargs:
-                    msg = f"Multiple values provided for parameter `{p}`."
-                    raise ValueError(msg)
-                kwargs[p] = v
-            args = ()
-        kwargs = self.defaults | kwargs | self._bound
-        kwargs = self._rename_to_native(kwargs)
-
-        with self._maybe_profiler():
-            if self._evaluate_lazy:
-                args = evaluate_lazy(args)
-                kwargs = evaluate_lazy(kwargs)
-            _maybe_update_kwargs_with_resources(
-                kwargs,
-                self.resources_variable,
-                evaluated_resources,
-                self.resources,
-            )
-            func: Callable[..., R] = self.func  # widen ParamSpec for the transformed kwargs
-            try:
-                result = func(*args, **kwargs)
-            except Exception as e:
-                if self.print_error:
-                    print(
-                        f"An error occurred while calling the function `{self.__name__}`"
-                        f" with the arguments `{args=}` and `{kwargs=}`.",
-                    )
-                renamed_kwargs = self._rename_to_native(kwargs)
-                self.error_snapshot = ErrorSnapshot(self.func, e, args, renamed_kwargs)
-                raise
-
-        if self.debug:
-            _default_debug_printer(self, result, kwargs)
-        if self.post_execution_hook is not None:
-            self.post_execution_hook(self, result, kwargs)
-        return result
 
     @functools.cached_property
     def __signature__(self) -> inspect.Signature:
@@ -813,32 +404,19 @@ class PipeFunc(Generic[P, R]):
 
     @property
     def profile(self) -> bool:
-        """Return whether profiling is enabled for the wrapped function."""
-        return self._profile
+        pass
 
     @profile.setter
     def profile(self, enable: bool) -> None:
-        """Enable or disable profiling for the wrapped function."""
-        self._profile = enable
-        if enable:
-            requires("psutil", reason="profile", extras="profiling")
-            self.profiling_stats = ProfilingStats()
-        else:
-            self.profiling_stats = None
+        pass
 
     @functools.cached_property
     def parameter_scopes(self) -> set[str]:
-        """Return the scopes of the function parameters.
-
-        These are constructed from the parameter names that contain a dot.
-        So if the parameter is ``foo.bar``, the scope is ``foo``.
-        """
-        return {k.split(".", 1)[0] for k in self.parameters if "." in k}
+        pass
 
     @functools.cached_property
     def unscoped_parameters(self) -> tuple[str, ...]:
-        """Return the parameters with the scope stripped off."""
-        return tuple(name.split(".", 1)[-1] for name in self.parameters)
+        pass
 
     def _flatten_scopes(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """Flatten the scopes of the function parameters.
@@ -869,20 +447,11 @@ class PipeFunc(Generic[P, R]):
 
     @functools.cached_property
     def parameter_annotations(self) -> dict[str, Any]:
-        """Return the type annotations of the wrapped function's parameters."""
-        func = self.func
-        if not is_pydantic_base_model(func):
-            if inspect.isclass(func):
-                func = func.__init__
-            elif not inspect.isfunction(func) and not is_classmethod(func):
-                func = func.__call__  # type: ignore[operator]
-        type_hints = safe_get_type_hints(func, include_extras=True)
-        return {self.renames.get(k, k): v for k, v in type_hints.items() if k != "return"}
+        pass
 
     @functools.cached_property
     def _lazyframe_parameters(self) -> tuple[str, ...]:
-        """Names of parameters annotated as `polars.LazyFrame`."""
-        return tuple(p for p, a in self.parameter_annotations.items() if is_lazyframe_annotation(a))
+        pass
 
     def _convert_lazyframe_kwargs(self, kwargs: dict[str, Any]) -> None:
         """Convert `pl.DataFrame` values to `pl.LazyFrame` where the annotation asks for it."""
@@ -897,50 +466,11 @@ class PipeFunc(Generic[P, R]):
 
     @functools.cached_property
     def output_annotation(self) -> dict[str, Any]:
-        """Return the type annotation of the wrapped function's output."""
-        func = self.func
-        if inspect.isclass(func) and isinstance(self.output_name, str):
-            return {self.output_name: func}
-        if not inspect.isfunction(func) and not is_classmethod(func):
-            func = func.__call__  # type: ignore[operator]
-        if self._output_picker is None:
-            hint = safe_get_type_hints(func, include_extras=True).get("return", NoAnnotation)
-        else:
-            # We cannot determine the output type if a custom output picker
-            # is used, however, if the output is a tuple and the _default_output_picker
-            # is used, we can determine the output type.
-            hint = NoAnnotation
-        if not isinstance(self.output_name, tuple):
-            return {self.output_name: hint}
-        if get_origin(hint) is tuple:
-            return dict(zip(self.output_name, get_args(hint)))
-        if _is_named_tuple(hint):
-            field_hints = safe_get_type_hints(hint, include_extras=True)
-            return {
-                name: field_hints.get(original_name, NoAnnotation)
-                for name, original_name in zip(self.output_name, hint._fields)
-            }
-        return dict.fromkeys(self.output_name, NoAnnotation)
+        pass
 
-    @functools.cached_property
-    def requires_mapping(self) -> bool:
-        return self.mapspec is not None and bool(self.mapspec.inputs)
 
     def _maybe_profiler(self) -> contextlib.AbstractContextManager:
-        """Maybe get profiler.
-
-        Get a profiler instance if profiling is enabled, otherwise
-        return a dummy context manager.
-
-        Returns
-        -------
-            A `ResourceProfiler` instance if profiling is enabled, or a
-            `nullcontext` if disabled.
-
-        """
-        if self.profiling_stats is not None:
-            return ResourceProfiler(os.getpid(), self.profiling_stats)
-        return contextlib.nullcontext()
+        pass
 
     def __str__(self) -> str:
         """Return a string representation of the PipeFunc instance.
@@ -1029,7 +559,6 @@ class PipeFunc(Generic[P, R]):
                 " functions and the MapSpec input names are unique, the bound"
                 " arguments cannot be part of the MapSpec input names."
             )
-            # This *can* be implemented but requires a lot of work
             raise ValueError(msg)
 
         mapspec_output_names = set(self.mapspec.output_names)
@@ -1044,27 +573,7 @@ class PipeFunc(Generic[P, R]):
 
     @functools.cached_property
     def _cache_id(self) -> str:
-        """Return a unique identifier for the function used in cache keys.
-
-        Includes a fingerprint of the function's implementation, so that
-        editing a function invalidates its cached results (e.g., when
-        redefining a function in a Jupyter notebook or when using a
-        persistent `~pipefunc.cache.DiskCache` across sessions).
-        """
-        name = "-".join(at_least_tuple(self.output_name))
-        if hasattr(self.func, "__pipefunc_hash__"):
-            pipefunc_hash = self.func.__pipefunc_hash__()
-            return f"{name}-{pipefunc_hash}"
-        if (function_hash := compute_function_hash(self.func)) is not None:
-            return f"{name}-{function_hash}"
-        warnings.warn(
-            f"Cannot fingerprint the implementation of `{self.__name__}` for the cache key;"
-            " cached results will not be invalidated when the function changes."
-            " Define a `__pipefunc_hash__` method on the callable to control this.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return name
+        pass
 
 
 def pipefunc(
@@ -1229,117 +738,12 @@ def pipefunc(
     """
 
     def decorator(f: Callable[P, R]) -> PipeFunc[P, R]:
-        """Wraps the original function in a PipeFunc instance.
-
-        Parameters
-        ----------
-        f
-            The original function to be wrapped.
-
-        Returns
-        -------
-            The wrapped function with the specified return identifier.
-
-        """
-        return PipeFunc(
-            f,
-            output_name,
-            output_picker=output_picker,
-            renames=renames,
-            defaults=defaults,
-            bound=bound,
-            profile=profile,
-            debug=debug,
-            print_error=print_error,
-            cache=cache,
-            mapspec=mapspec,
-            internal_shape=internal_shape,
-            post_execution_hook=post_execution_hook,
-            resources=resources,
-            resources_variable=resources_variable,
-            resources_scope=resources_scope,
-            variant=variant,
-            variant_group=variant_group,  # deprecated
-            scope=scope,
-        )
+        pass
 
     return decorator
 
 
 class NestedPipeFunc(PipeFunc):
-    """Combine multiple `PipeFunc` instances into a single function with an internal `Pipeline`.
-
-    Parameters
-    ----------
-    pipefuncs
-        A sequence of at least 2 `PipeFunc` instances to combine into a single function.
-    output_name
-        The identifier for the output of the wrapped function. If ``None``, it is automatically
-        constructed from all the output names of the `PipeFunc` instances. Must be a subset of
-        the output names of the `PipeFunc` instances.
-    function_name
-        The name of the nested function, if ``None`` the name will be set
-        to ``"NestedPipeFunc_{output_name[0]}_{output_name[...]}"``.
-    mapspec
-        `~pipefunc.map.MapSpec` for the joint function. If ``None``, the mapspec is inferred
-        from the individual `PipeFunc` instances. None of the `MapsSpec` instances should
-        have a reduction and all should use identical axes.
-    resources
-        Same as the `PipeFunc` class. However, if it is ``None`` here, it is inferred from
-        from the `PipeFunc` instances. Specifically, it takes the maximum of the resources.
-        Unlike the `PipeFunc` class, the `resources` argument cannot be a callable.
-    resources_scope
-        Same as the `PipeFunc` class.
-        Determines how resources are allocated in relation to the mapspec:
-
-        - "map": Allocate resources for the entire mapspec operation (default).
-        - "element": Allocate resources for each element in the mapspec.
-
-        If no mapspec is defined, this parameter is ignored.
-    cache
-        Flag indicating whether the wrapped function should be cached.
-        If None, cache will be set to True if any of the `PipeFunc` instances have caching enabled.
-    bound
-        Same as the `PipeFunc` class. Bind arguments to the functions. These are arguments
-        that are fixed. Even when providing different values, the bound values will be
-        used. Must be in terms of the renamed argument names.
-    variant
-        Same as the `PipeFunc` class.
-        Identifies this function as an alternative implementation in a
-        `VariantPipeline` and specifies which variant groups it belongs to.
-        When multiple functions share the same `output_name`, variants allow
-        selecting which implementation to use during pipeline execution.
-
-        Can be specified in two formats:
-        - A string (e.g., ``"fast"``): Places the function in the default unnamed
-          group (None) with the specified variant name. Equivalent to ``{None: "fast"}``.
-        - A dictionary (e.g., ``{"algorithm": "fast", "optimization": "level1"}``):
-          Assigns the function to multiple variant groups simultaneously, with a
-          specific variant name in each group.
-
-        Functions with the same `output_name` but different variant specifications
-        represent alternative implementations. The {meth}`VariantPipeline.with_variant`
-        method selects which variants to use for execution. For example, you might
-        have "preprocessing" variants ("v1"/"v2") independent from "computation"
-        variants ("fast"/"accurate"), allowing you to select specific combinations
-        like ``{"preprocessing": "v1", "computation": "fast"}``.
-    variant_group
-        DEPRECATED in v0.58.0: Use `variant` instead.
-
-    Attributes
-    ----------
-    pipefuncs
-        List of `PipeFunc` instances (copies of input) that are used in the internal ``pipeline``.
-    pipeline
-        The `Pipeline` instance that manages the `PipeFunc` instances.
-
-    Notes
-    -----
-    The `NestedPipeFunc` class is a subclass of the `PipeFunc` class that allows you to
-    combine multiple `PipeFunc` instances into a single function that has an internal
-    `~pipefunc.Pipeline` instance.
-
-    """
 
     def __init__(
         self,
@@ -1393,8 +797,6 @@ class NestedPipeFunc(PipeFunc):
         self._validate()
 
     def copy(self, **update: Any) -> NestedPipeFunc:
-        # Pass the mapspec to the new instance because we set
-        # the child mapspecs to None in the __init__
         kwargs = {
             "pipefuncs": self.pipeline.functions,
             "output_name": self._output_name,
@@ -1418,72 +820,16 @@ class NestedPipeFunc(PipeFunc):
 
     @functools.cached_property
     def _cache_id(self) -> str:
-        """Return a unique identifier combining the nested functions' identifiers."""
-        name = "-".join(at_least_tuple(self.output_name))
-        combined = "|".join(f._cache_id for f in self.pipeline.sorted_functions)
-        digest = hashlib.sha256(combined.encode()).hexdigest()[:16]
-        return f"{name}-{digest}"
+        pass
 
-    def _combine_mapspecs(self) -> MapSpec | None:
-        mapspecs = [f.mapspec for f in self.pipeline.functions]
-        if all(m is None for m in mapspecs):
-            return None
-        _validate_combinable_mapspecs(mapspecs)
-        axes = mapspec_axes(mapspecs)  # type: ignore[arg-type]
-        return MapSpec(
-            tuple(ArraySpec(n, axes[n]) for n in sorted(self.parameters) if n in axes),
-            tuple(ArraySpec(n, axes[n]) for n in sorted(at_least_tuple(self.output_name))),
-            _is_generated=True,
-        )
 
-    @functools.cached_property
-    def original_parameters(self) -> dict[str, Any]:
-        parameters = set(self._all_inputs) - set(self._all_outputs)
-        return {
-            k: inspect.Parameter(
-                name=k if "." not in k else _ScopedIdentifier(k),
-                kind=inspect.Parameter.KEYWORD_ONLY,
-                # `default` and `annotations` not set because they requires `original_parameters`
-                default=inspect.Parameter.empty,
-                annotation=inspect.Parameter.empty,
-            )
-            for k in sorted(parameters)
-        }
 
-    @functools.cached_property
-    def output_annotation(self) -> dict[str, Any]:
-        return {
-            name: self.pipeline[original_name].output_annotation[original_name]
-            for name, original_name in zip(
-                at_least_tuple(self.output_name),
-                at_least_tuple(self._output_name),
-            )
-        }
 
     @functools.cached_property
     def parameter_annotations(self) -> dict[str, Any]:
-        """Return the type annotations of the wrapped function's parameters."""
-        annotations = self.pipeline.parameter_annotations
-        return {
-            p: annotations[p_original]
-            for p in self.parameters
-            if (p_original := self._inverse_renames.get(p, p)) in annotations
-        }
+        pass
 
-    @functools.cached_property
-    def _all_outputs(self) -> tuple[str, ...]:
-        outputs: list[str] = []
-        for f in self.pipeline.sorted_functions:
-            outputs.extend(at_least_tuple(f.output_name))
-        return tuple(outputs)
 
-    @functools.cached_property
-    def _all_inputs(self) -> tuple[str, ...]:
-        inputs: set[str] = set()
-        for f in self.pipeline.functions:
-            parameters_excluding_bound = set(f.parameters) - set(f._bound)
-            inputs.update(parameters_excluding_bound)
-        return tuple(sorted(inputs))
 
     @functools.cached_property
     def func(self) -> Callable[..., tuple[Any, ...]]:  # type: ignore[override]
@@ -1499,29 +845,9 @@ class NestedPipeFunc(PipeFunc):
         return f"{self.__class__.__name__}(pipefuncs={self.pipeline.functions})"
 
 
-def _maybe_max_resources(
-    resources: dict | Resources | None,
-    pipefuncs: list[PipeFunc],
-) -> Resources | None:
-    if isinstance(resources, Resources) or callable(resources):
-        return resources
-    if isinstance(resources, dict):
-        return Resources.from_dict(resources)
-    resources_list = [f.resources for f in pipefuncs if f.resources is not None]
-    assert not any(callable(f.resources) for f in pipefuncs)
-    if len(resources_list) == 1:
-        return resources_list[0]  # type: ignore[return-value]
-    if not resources_list:
-        return None
-    return Resources.combine_max(resources_list)  # type: ignore[arg-type]
 
 
 class _NestedFuncWrapper:
-    """Wrapper class for nested functions.
-
-    Takes a function that returns a dictionary and returns a tuple of values in the
-    order specified by the output_name.
-    """
 
     def __init__(
         self,
@@ -1554,39 +880,8 @@ def _validate_identifier(name: str, value: Any) -> None:
         raise ValueError(msg)
 
 
-def _validate_nested_pipefunc(
-    pipefuncs: Sequence[PipeFunc],
-    resources: dict | Resources | None,
-) -> None:
-    if not all(isinstance(f, PipeFunc) for f in pipefuncs):
-        msg = "All elements in `pipefuncs` should be instances of `PipeFunc`."
-        raise TypeError(msg)
-
-    if len(pipefuncs) < 2:  # noqa: PLR2004
-        msg = "The provided `pipefuncs` should have at least two `PipeFunc`s."
-        raise ValueError(msg)
-
-    if resources is None and any(callable(f.resources) for f in pipefuncs):
-        msg = (
-            "A `NestedPipeFunc` cannot have nested functions with callable `resources`."
-            " Provide `NestedPipeFunc(..., resources=...)` instead."
-        )
-        raise ValueError(msg)
-
-    if callable(resources):
-        msg = (
-            "`NestedPipeFunc` cannot have callable `resources`."
-            " Provide a `Resources` instance instead or do not nest the `PipeFunc`s."
-        )
-        raise TypeError(msg)
 
 
-def _validate_output_name(output_name: OUTPUT_TYPE | None, all_outputs: tuple[str, ...]) -> None:
-    if output_name is None:
-        return
-    if not all(x in all_outputs for x in at_least_tuple(output_name)):
-        msg = f"The provided `{output_name=}` should be a subset of the combined output names: {all_outputs}."
-        raise ValueError(msg)
 
 
 def _validate_combinable_mapspecs(mapspecs: list[MapSpec | None]) -> None:
@@ -1613,39 +908,15 @@ def _validate_combinable_mapspecs(mapspecs: list[MapSpec | None]) -> None:
 
 
 def _is_named_tuple(hint: Any) -> bool:
-    """Check if a type hint is a NamedTuple."""
-    return inspect.isclass(hint) and issubclass(hint, tuple) and hasattr(hint, "_fields")
+    pass
 
 
 def _default_output_picker(output: Any, name: str, output_name: OUTPUT_TYPE) -> Any:
-    """Default output picker function for tuples."""
-    # If output is an error, return it as-is for all output names
-    if isinstance(output, (ErrorSnapshot, PropagatedErrorSnapshot)):
-        return output
-    return output[output_name.index(name)]
+    pass
 
 
-def _rename_output_name(
-    original_output_name: OUTPUT_TYPE,
-    renames: dict[str, str],
-) -> OUTPUT_TYPE:
-    if isinstance(original_output_name, str):
-        return renames.get(original_output_name, original_output_name)
-    return tuple(renames.get(name, name) for name in original_output_name)
 
 
-def _prepend_name_with_scope(name: str, scope: str | None) -> str:
-    if scope is None:
-        return name.split(".", 1)[1] if "." in name else name
-    if name.startswith(f"{scope}."):
-        return name
-    if "." in name:
-        old_scope, name = name.split(".", 1)
-        warnings.warn(
-            f"Parameter '{name}' already has a scope '{old_scope}', replacing it with '{scope}'.",
-            stacklevel=3,
-        )
-    return f"{scope}.{name}"
 
 
 def _maybe_mapspec(mapspec: str | MapSpec | None) -> MapSpec | None:
@@ -1653,106 +924,21 @@ def _maybe_mapspec(mapspec: str | MapSpec | None) -> MapSpec | None:
     return MapSpec.from_string(mapspec) if isinstance(mapspec, str) else mapspec
 
 
-def _maybe_update_kwargs_with_resources(
-    kwargs: dict[str, Any],
-    resources_variable: str | None,
-    evaluated_resources: Resources | None,
-    resources: Resources | Callable[[dict[str, Any]], Resources] | None,
-) -> None:
-    if resources_variable:
-        if evaluated_resources is not None:
-            kwargs[resources_variable] = evaluated_resources
-        elif callable(resources):
-            kwargs[resources_variable] = resources(kwargs)
-        else:
-            kwargs[resources_variable] = resources
 
 
-def _default_debug_printer(func: PipeFunc, result: Any, kwargs: dict[str, Any]) -> None:
-    func_str = format_function_call(func.__name__, (), kwargs)
-    now = datetime.datetime.now()  # noqa: DTZ005
-    msg = (
-        f"{now} - Function returning '{func.output_name}' was invoked"
-        f" as `{func_str}` and returned `{result}`."
-    )
-    if func.profiling_stats is not None:
-        dt = func.profiling_stats.time.average
-        msg += f" The execution time was {dt:.2e} seconds on average."
-    print(msg)
 
 
-def _get_name(func: Callable[..., Any]) -> str:
-    if isinstance(func, PipeFunc):
-        return _get_name(func.func)
-    if inspect.ismethod(func):
-        qualname = func.__qualname__
-        if "." in qualname:
-            *_, class_name, method_name = qualname.split(".")
-            return f"{class_name}.{method_name}"
-        return qualname  # pragma: no cover
-    if inspect.isfunction(func) or hasattr(func, "__name__"):
-        return func.__name__
-    return type(func).__name__
 
 
-def _pydantic_defaults(
-    func: type[pydantic.BaseModel],
-    renames: dict[str, Any],
-    defaults: dict[str, Any],
-) -> dict[str, Any]:
-    import pydantic
-
-    defaults = defaults.copy()  # Make a copy to avoid modifying the original
-    if pydantic.__version__.split(".", 1)[0] == "1":  # pragma: no cover
-        msg = "Pydantic version 1 defaults cannot be extracted."
-        warnings.warn(msg, UserWarning, stacklevel=2)
-        return {}
-    from pydantic_core import PydanticUndefined
-
-    for name, field_ in func.model_fields.items():
-        new_name = renames.get(name, name)
-        if new_name in defaults:
-            defaults[new_name] = defaults[new_name]
-        elif field_.default_factory is not None:
-            defaults[new_name] = field_.default_factory()
-        elif field_.default is not PydanticUndefined:
-            defaults[new_name] = field_.default
-    return defaults
 
 
 def _ensure_variant(variant: str | dict[str | None, str] | None) -> dict[str | None, str]:
-    """Ensure that the variant is in the correct format."""
-    # Convert string variant to dict with None as group
-    if isinstance(variant, str):
-        return {None: variant}
-    return variant or {}
+    pass
 
 
-def _maybe_variant_group_error(
-    variant_group: str | None,
-    variant: str | dict[str | None, str] | None,
-) -> None:
-    if variant_group is not None:  # TODO: remove in 2025-09
-        msg = (
-            "The `variant_group` parameter has been removed in v0.58.0."
-            f" Use the `variant = {{{variant_group!r}: {variant!r}}}` parameter instead."
-        )
-        raise ValueError(msg)
 
 
 class _ScopedIdentifier(str):
-    """String subclass that represents a scoped identifier in a `inspect.Signature`.
-
-    Its main use is to allow
-    >>> Parameter(ScopedIdentifier("myscope.x"), kind=Parameter.POSITIONAL_OR_KEYWORD)
-    where the following is not possible
-    >>> Parameter("myscope.x", kind=Parameter.POSITIONAL_OR_KEYWORD)
-    because "myscope.x" is not a valid identifier.
-
-    Another alternative considered to represent a scoped parameter was to use TypedDict and
-    only include the scoped name in the key but this has more limitations such as not
-    containing defaults and making parameters KEYWORD_ONLY due to changed order.
-    """
 
     __slots__ = ()
 

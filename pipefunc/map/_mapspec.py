@@ -1,7 +1,3 @@
-# This file is part of the pipefunc package.
-# Originally, it is based on code from the `aiida-dynamic-workflows` package.
-# Its license can be found in the LICENSE file in this folder.
-# See `git diff 98a1736 pipefunc/map/_mapspec.py` for the changes made.
 
 from __future__ import annotations
 
@@ -44,7 +40,6 @@ def shape_to_strides(shape: tuple[int, ...]) -> tuple[int, ...]:
 
 @dataclass(frozen=True, slots=True)
 class ArraySpec:
-    """Specification for a named array, with some axes indexed by named indices."""
 
     name: str
     axes: tuple[str | None, ...]
@@ -77,8 +72,7 @@ class ArraySpec:
 
     @property
     def rank(self) -> int:
-        """Return the rank of this array spec."""
-        return len(self.axes)
+        pass
 
     def validate(self, shape: ShapeTuple) -> None:
         """Raise an exception if 'shape' is not compatible with this array spec."""
@@ -89,47 +83,14 @@ class ArraySpec:
             raise ValueError(msg)
 
     def add_axes(self, *axis: str | None) -> ArraySpec:
-        """Return a new ArraySpec with additional axes."""
-        # check for no duplicate axes
-        if any(ax in self.axes for ax in axis if ax is not None):
-            msg = f"Duplicate axes are not allowed: {axis}"
-            raise ValueError(msg)
-        return ArraySpec(self.name, self.axes + axis)
+        pass
 
     def rename_axes(self, renames: dict[str, str]) -> ArraySpec:
-        """Return a new ArraySpec with renamed axes.
-
-        Parameters
-        ----------
-        renames
-            Dictionary mapping old axis names to new axis names.
-
-        Returns
-        -------
-            A new ArraySpec with renamed axes.
-
-        Examples
-        --------
-        >>> spec = ArraySpec("a", ("i", "j"))
-        >>> renamed = spec.rename_axes({"i": "x", "j": "y"})
-        >>> renamed.axes
-        ('x', 'y')
-
-        """
-        new_axes = tuple(renames.get(ax, ax) if ax is not None else ax for ax in self.axes)
-        return ArraySpec(self.name, new_axes)
+        pass
 
 
 @dataclass(frozen=True)
 class MapSpec:
-    """Specification for how to map input axes to output axes.
-
-    Examples
-    --------
-    >>> mapped = MapSpec.from_string("a[i, j], b[i, j], c[k] -> q[i, j, k]")
-    >>> partial_reduction = MapSpec.from_string("a[i, :], b[:, k] -> q[i, k]")
-
-    """
 
     inputs: tuple[ArraySpec, ...]
     outputs: tuple[ArraySpec, ...]
@@ -153,28 +114,23 @@ class MapSpec:
 
     @property
     def input_names(self) -> tuple[str, ...]:
-        """Return the parameter names of this mapspec."""
-        return tuple(x.name for x in self.inputs)
+        pass
 
     @property
     def output_names(self) -> tuple[str, ...]:
-        """Return the names of the output arrays."""
-        return tuple(x.name for x in self.outputs)
+        pass
 
     @property
     def output_indices(self) -> tuple[str, ...]:
-        """Return the index names of the output array."""
-        return self.outputs[0].indices  # All outputs have the same indices
+        pass
 
     @functools.cached_property
     def external_indices(self) -> tuple[str, ...]:
-        """Output indices that are shared with the input indices."""
-        return tuple(n for n in self.output_indices if n in self.input_indices)
+        pass
 
     @property
     def input_indices(self) -> set[str]:
-        """Return the index names of the input arrays."""
-        return {index for x in self.inputs for index in x.indices}
+        pass
 
     def shape(
         self,
@@ -287,54 +243,24 @@ class MapSpec:
         return cls(inputs, outputs)
 
     def to_string(self) -> str:
-        """Return a faithful representation of a MapSpec as a string."""
-        return str(self)
+        pass
 
     def add_axes(self, *axis: str | None) -> MapSpec:
-        """Return a new MapSpec with additional axes."""
-        return MapSpec(
-            tuple(x.add_axes(*axis) for x in self.inputs),
-            tuple(x.add_axes(*axis) for x in self.outputs),
-        )
+        pass
 
     def rename(self, renames: dict[str, str]) -> MapSpec:
         """Return a new renamed MapSpec if any of the names are in 'renames'."""
         if not any(name in renames for name in self.input_names + self.output_names):
             return self
 
-        def _rename(spec: ArraySpec) -> ArraySpec:
-            return ArraySpec(renames.get(spec.name, spec.name), spec.axes)
 
         return MapSpec(tuple(map(_rename, self.inputs)), tuple(map(_rename, self.outputs)))
 
     def rename_axes(self, renames: dict[str, str]) -> MapSpec:
-        """Return a new MapSpec with renamed axes.
-
-        Parameters
-        ----------
-        renames
-            Dictionary mapping old axis names to new axis names.
-
-        Returns
-        -------
-            A new MapSpec with renamed axes applied to all inputs and outputs.
-
-        Examples
-        --------
-        >>> spec = MapSpec.from_string("a[i, j], b[i, j] -> c[i, j]")
-        >>> renamed = spec.rename_axes({"i": "x", "j": "y"})
-        >>> str(renamed)
-        'a[x, y], b[x, y] -> c[x, y]'
-
-        """
-        return MapSpec(
-            tuple(spec.rename_axes(renames) for spec in self.inputs),
-            tuple(spec.rename_axes(renames) for spec in self.outputs),
-        )
+        pass
 
 
 def _shape_to_key(shape: tuple[int, ...], linear_index: int) -> tuple[int, ...]:
-    # Could use np.unravel_index
     return tuple(
         (linear_index // stride) % dim for stride, dim in zip(shape_to_strides(shape), shape)
     )
@@ -362,7 +288,6 @@ def _parse_indexed_arrays(expr: str) -> tuple[ArraySpec, ...]:
     )
 
 
-# NOTE: This function is not used in the current implementation!
 def array_mask(x: npt.NDArray | list) -> npt.NDArray[np.bool_]:
     """Return the mask applied to 'x', depending on its type.
 
@@ -536,7 +461,6 @@ def _get_output_dim(
             msg = f"Internal shape for '{output.name}' must be a tuple of integers or '?'."
             raise TypeError(msg)
         return dim
-    # Infer that the dimension is unknown
     return "?"
 
 
@@ -566,7 +490,6 @@ def trace_dependencies(mapspecs: list[MapSpec]) -> dict[str, dict[str, tuple[str
         if mapspec.inputs
     }
 
-    # Go from {output: {axis: list[input]}} to {output: {input: set[axis]}}
     deps = {name: _trace_dependencies(name, mapspec_mapping) for name in mapspec_mapping}
     reordered: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for output_name, dct in deps.items():

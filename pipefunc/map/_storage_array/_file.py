@@ -1,4 +1,3 @@
-# This file is part of the pipefunc package.
 
 from __future__ import annotations
 
@@ -32,10 +31,6 @@ FILENAME_TEMPLATE = "__{:d}__.pickle"
 
 
 class FileArray(StorageBase):
-    """Array interface to a folder of files on disk.
-
-    __getitem__ returns "np.ma.masked" for non-existent files.
-    """
 
     folder: Path
     storage_id = "file_array"
@@ -104,8 +99,7 @@ class FileArray(StorageBase):
         return self._index_to_file(index).is_file()
 
     def _files(self) -> Iterator[Path]:
-        """Yield all the filenames that constitute the data in this array."""
-        return (self._key_to_file(x) for x in iterate_shape_indices(self.resolved_shape))
+        pass
 
     def _slice_indices(
         self,
@@ -157,37 +151,7 @@ class FileArray(StorageBase):
         key: tuple[int | slice, ...],
         normalized_key: tuple[int | slice, ...],
     ) -> np.ma.core.MaskedArray:
-        """Return a sliced view of the array as a masked array."""
-        slice_indices = self._slice_indices(key)
-        sliced_data = []
-        sliced_mask = []
-
-        for index in itertools.product(*slice_indices):
-            file_key = tuple(i for i, m in zip(index, self.shape_mask) if m)
-            file = self._key_to_file(file_key)
-            if file.is_file():
-                sub_array = load(file)
-                internal_index = tuple(i for i, m in zip(index, self.shape_mask) if not m)
-                if internal_index:
-                    sub_array = np.asarray(sub_array)  # could be a list
-                    sliced_sub_array = sub_array[internal_index]
-                    sliced_data.append(sliced_sub_array)
-                else:
-                    sliced_data.append(sub_array)
-                sliced_mask.append(False)
-            else:
-                sliced_data.append(np.ma.masked)
-                sliced_mask.append(True)
-
-        sliced_array: np.ndarray = np.empty(len(sliced_data), dtype=object)
-        sliced_array[:] = sliced_data
-        mask: np.ndarray = np.array(sliced_mask, dtype=bool)
-        sliced_array = np.ma.masked_array(sliced_array, mask=mask)
-
-        new_shape = tuple(
-            len(range_) for k, range_ in zip(normalized_key, slice_indices) if isinstance(k, slice)
-        )
-        return sliced_array.reshape(new_shape)
+        pass
 
     def to_array(self, *, splat_internal: bool | None = None) -> np.ma.core.MaskedArray:
         """Return a masked numpy array containing all the data.
@@ -243,20 +207,12 @@ class FileArray(StorageBase):
 
     def mask_linear(self) -> list[bool]:
         """Return a list of booleans indicating which elements are missing."""
-        # We use os.listdir to check if a file exists instead of checking with
-        # self._index_to_file(i).is_file() because this is more efficient.
         existing_files = set(os.listdir(self.folder))  # noqa: PTH208
         return [self.filename_template.format(i) not in existing_files for i in range(self.size)]
 
     @property
     def mask(self) -> np.ma.core.MaskedArray:
-        """Return a masked numpy array containing the mask.
-
-        The returned numpy array has dtype "bool" and a mask for
-        masking out missing data.
-        """
-        mask = self.mask_linear()
-        return np.ma.MaskedArray(mask, mask=mask, dtype=bool).reshape(self.resolved_shape)
+        pass
 
     def dump(self, key: tuple[int | slice, ...], value: Any) -> None:
         """Dump 'value' into the file associated with 'key'.
@@ -278,8 +234,7 @@ class FileArray(StorageBase):
 
     @property
     def dump_in_subprocess(self) -> bool:
-        """Indicates if the storage can be dumped in a subprocess and read by the main process."""
-        return True
+        pass
 
     @classmethod
     def from_data(cls, data: list[Any] | np.ndarray, folder: str | Path) -> FileArray:
@@ -323,8 +278,6 @@ def _read(name: str | Path) -> bytes:
 
 
 def _load_all(filenames: Iterator[Path]) -> list[Any]:
-    def maybe_read(f: Path) -> Any | None:
-        return _read(f) if f.is_file() else None
 
     def maybe_load(x: bytes | None) -> Any | None:
         if x is None:
@@ -337,8 +290,6 @@ def _load_all(filenames: Iterator[Path]) -> list[Any]:
             return pl.read_parquet(io.BytesIO(x))
         return cloudpickle.loads(x)
 
-    # Delegate file reading to the threadpool but deserialize sequentially,
-    # as this is pure Python and CPU bound
     with concurrent.futures.ThreadPoolExecutor() as tex:
         return [maybe_load(x) for x in tex.map(maybe_read, filenames)]
 

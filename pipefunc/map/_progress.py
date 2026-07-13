@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class Status:
-    """A class to keep track of the progress of a function."""
 
     n_total: int | None
     n_in_progress: int = 0
@@ -37,9 +36,6 @@ class Status:
         compare=False,
     )
 
-    @property
-    def n_left(self) -> int:
-        return self.n_total - self.n_attempted  # type: ignore[operator]
 
     def mark_in_progress(self, *, n: int = 1) -> None:
         if self.start_time is None:
@@ -47,16 +43,6 @@ class Status:
         self.n_in_progress += n
         self._notify_updated()
 
-    def mark_complete(
-        self,
-        future: Future | None = None,
-        *,
-        n: int = 1,
-    ) -> None:
-        failures = 0
-        if future is not None and future.exception() is not None:
-            failures = n
-        self.mark_finished(successes=n - failures, failures=failures)
 
     def mark_finished(self, *, successes: int, failures: int = 0) -> None:
         n = successes + failures
@@ -68,17 +54,7 @@ class Status:
             self.end_time = time.monotonic()
         self._notify_updated()
 
-    @property
-    def progress(self) -> float:
-        if self.n_total is None:
-            return 0.0
-        if self.n_total == 0:
-            return 1.0
-        return self.n_attempted / self.n_total
 
-    @property
-    def n_attempted(self) -> int:
-        return self.n_completed + self.n_failed
 
     def elapsed_time(self) -> float:
         if self.start_time is None:  # Happens when n_total is 0

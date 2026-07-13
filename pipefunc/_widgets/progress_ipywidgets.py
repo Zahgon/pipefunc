@@ -28,80 +28,16 @@ def _span(class_name: str, value: str) -> str:
     return f'<span class="{class_name}">{value}</span>'
 
 
-def _create_button(
-    description: str,
-    button_style: str,
-    icon: str,
-    on_click: Callable[[Any], None],
-) -> widgets.Button:
-    button = widgets.Button(description=description, button_style=button_style, icon=icon)
-    button.on_click(on_click)
-    return button
 
 
-def _output_name_as_string(name: OUTPUT_TYPE) -> str:
-    return ", ".join(at_least_tuple(name))
 
 
-def _create_progress_bar(
-    name: OUTPUT_TYPE,
-    progress: float,
-    description_width: str,
-) -> widgets.FloatProgress:
-    description = _output_name_as_string(name)
-    styles = [
-        "direction: rtl",  # Reverses text direction so ellipsis appears at the beginning
-        "display: inline-block",  # Allows block-like behavior within the inline flow
-        "width: 100%",  # Ensures span takes full available width
-        "white-space: nowrap",  # Prevents text from wrapping to a new line
-        "overflow: hidden",  # Hides text that extends beyond the container
-        "text-overflow: ellipsis",  # Shows "..." when text is truncated
-    ]
-    style = "; ".join(styles)
-    tooltip = {"tooltip" if _IPYWIDGETS_MAJOR_VERSION >= 8 else "description_tooltip": description}  # noqa: PLR2004
-    return widgets.FloatProgress(
-        value=progress,
-        max=1.0,
-        description=f"<span style='{style}'>{description}</span>",
-        description_allow_html=True,
-        layout={"width": "95%"},
-        bar_style="info",
-        style={"description_width": description_width},
-        **tooltip,
-    )
 
 
-def _create_progress_bars(
-    progress_dict: dict[OUTPUT_TYPE, Status],
-) -> dict[OUTPUT_TYPE, widgets.FloatProgress]:
-    max_desc_length = max(len(_output_name_as_string(name)) for name in progress_dict)
-    description_width = (
-        f"min(max({max_desc_length * 8}px, 150px), 50vw)"  # Min 150px, max 50% viewport width
-    )
-    return {
-        name: _create_progress_bar(name, status.progress, description_width)
-        for name, status in progress_dict.items()
-    }
 
 
-def _create_html_label(class_name: str, initial_value: str) -> widgets.HTML:
-    return widgets.HTML(value=_span(class_name, initial_value))
 
 
-def _create_labels(
-    progress_dict: dict[OUTPUT_TYPE, Status],
-) -> dict[OUTPUT_TYPE, dict[OUTPUT_TYPE, widgets.HTML]]:
-    return {
-        name: {
-            "percentage": _create_html_label("percent-label", f"{status.progress * 100:.1f}%"),
-            "estimated_time": _create_html_label(
-                "estimate-label",
-                "Elapsed: 0.00 sec | ETA: Calculating...",
-            ),
-            "speed": _create_html_label("speed-label", "Speed: Calculating..."),
-        }
-        for name, status in progress_dict.items()
-    }
 
 
 def _get_scope_hue(output_name: OUTPUT_TYPE) -> int | None:
@@ -112,13 +48,10 @@ def _get_scope_hue(output_name: OUTPUT_TYPE) -> int | None:
         return None
 
     scope = output_name[0].split(".")[0]
-    # Convert string to int (0-255)
     hash_value = int(hashlib.md5(scope.encode()).hexdigest(), 16)  # noqa: S324
     return hash_value % 360
 
 
-def _scope_border_color(hue: int | None) -> str:
-    return f"hsl({hue}, 70%, 70%)" if hue is not None else "#999999"
 
 
 def _scope_background_color_css(hue: int) -> str:
@@ -132,7 +65,6 @@ def _scope_background_color_css(hue: int) -> str:
 
 
 class IPyWidgetsProgressTracker(ProgressTrackerBase):
-    """Class to track progress and display it with ipywidgets."""
 
     def __init__(
         self,
@@ -232,8 +164,6 @@ class IPyWidgetsProgressTracker(ProgressTrackerBase):
         """Set the auto-update feature to the given value."""
         super()._set_auto_update(value)
         if not hasattr(self, "_buttons"):
-            # this method is called in `attach_task`, which might be before
-            # buttons are created
             return
         self._buttons["toggle_auto_update"].description = (
             "Stop Auto-Update" if self.auto_update else "Start Auto-Update"
@@ -246,86 +176,12 @@ class IPyWidgetsProgressTracker(ProgressTrackerBase):
             show(self._auto_update_interval_label)
 
     def _cancel_calculation(self, _: Any) -> None:
-        """Cancel the ongoing calculation."""
-        assert self.task is not None
-        self.task.cancel()
-        self.update_progress()  # Update progress one last time
-        if self.auto_update:
-            self._toggle_auto_update()
-        for button in self._buttons.values():
-            button.disabled = True
-        for progress_bar in self._progress_bars.values():
-            if progress_bar.value < 1.0:
-                progress_bar.bar_style = "danger"
-                progress_bar.remove_class("animated-progress")
-                progress_bar.add_class("completed-progress")
-        self._auto_update_interval_label.value = _span("interval-label", "Calculation cancelled ❌")
+        pass
 
-    def _create_buttons(self) -> None:
-        self._buttons = {
-            "update": _create_button(
-                description="Update Progress",
-                button_style="info",
-                icon="refresh",
-                on_click=self.update_progress,
-            ),
-            "toggle_auto_update": _create_button(
-                description="Start Auto-Update",
-                button_style="success",
-                icon="refresh",
-                on_click=self._toggle_auto_update,
-            ),
-            "cancel": _create_button(
-                description="Cancel Calculation",
-                button_style="danger",
-                icon="stop",
-                on_click=self._cancel_calculation,
-            ),
-        }
-        self._buttons_box = widgets.HBox(
-            list(self._buttons.values()),
-            layout=widgets.Layout(justify_content="center"),
-        )
 
-    def _create_progress_vboxes(self) -> None:
-        self._progress_vboxes: dict[OUTPUT_TYPE, widgets.VBox] = {}
-        for name in self.progress_dict:
-            labels = self._labels[name]
-            labels_box = widgets.HBox(
-                [labels["percentage"], labels["estimated_time"], labels["speed"]],
-                layout=widgets.Layout(justify_content="space-between"),
-            )
-            hue = _get_scope_hue(name)
-            border_color = _scope_border_color(hue)
-            border = f"1px solid {border_color}"
-            container = widgets.VBox(
-                [self._progress_bars[name], labels_box],
-                layout=widgets.Layout(border=border, margin="2px 4px", padding="2px"),
-            )
-            self._progress_vboxes[name] = container
-            container.add_class("progress-vbox")
-            if hue is not None:  # `background-color` is not settable for `VBox`, so use CSS classes
-                container.add_class(f"scope-bg-{hue}")
 
     def _create_widgets(self) -> widgets.VBox:
-        """Display the progress widgets with styles."""
-        self._auto_update_interval_label = _create_html_label(
-            "interval-label",
-            "Auto-update every: N/A",
-        )
-        self._labels = _create_labels(self.progress_dict)
-        self._progress_bars = _create_progress_bars(self.progress_dict)
-        self._create_buttons()
-        self._create_progress_vboxes()
-        if not self.task:
-            hide(self._buttons_box)
-            hide(self._auto_update_interval_label)
-        children = [
-            *self._progress_vboxes.values(),
-            self._buttons_box,
-            self._auto_update_interval_label,
-        ]
-        return widgets.VBox(children, layout=widgets.Layout(max_width="700px"))
+        pass
 
     def _style(self) -> IPython.display.HTML:
         style = textwrap.dedent(

@@ -1,4 +1,3 @@
-"""pipefunc utility functions, may import things unlike `_utils.py`."""
 
 from __future__ import annotations
 

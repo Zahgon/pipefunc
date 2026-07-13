@@ -201,7 +201,6 @@ def run_map_eager(
     """
     resume = _handle_cleanup_deprecation(cleanup, resume, stacklevel=2)
 
-    # Prepare the run (this call sets up the run folder, storage, progress, etc.)
     prep = prepare_run(
         pipeline=pipeline,
         inputs=inputs,
@@ -254,14 +253,11 @@ def _build_dependency_graph(pipeline: Pipeline) -> _DependencyInfo:
     children: dict[PipeFunc, list[PipeFunc]] = {}
 
     for f in pipeline.functions:
-        # Count only incoming edges from other PipeFunc nodes
         count = sum(1 for n in graph.predecessors(f) if isinstance(n, PipeFunc))
         remaining_deps[f] = count
 
-        # Record all downstream functions (children) that are PipeFunc instances
         children[f] = [child for child in graph.successors(f) if isinstance(child, PipeFunc)]
 
-    # Initially, functions with no PipeFunc dependencies are ready
     ready = [f for f in pipeline.functions if remaining_deps[f] == 0]
 
     return _DependencyInfo(remaining_deps, children, ready)
@@ -269,7 +265,6 @@ def _build_dependency_graph(pipeline: Pipeline) -> _DependencyInfo:
 
 @dataclass
 class _DependencyInfo:
-    """Container for dependency graph information."""
 
     remaining_deps: dict[PipeFunc, int]
     children: dict[PipeFunc, list[PipeFunc]]
@@ -286,7 +281,6 @@ def _ensure_future(x: Any) -> Future[Any]:
 
 
 class _FunctionTracker:
-    """Tracks function execution state during eager scheduling with unified sync/async API."""
 
     def __init__(self, *, is_async: bool = False) -> None:
         """Initialize the function tracker."""
@@ -296,7 +290,6 @@ class _FunctionTracker:
         self.completed_funcs: set[PipeFunc] = set()
         self.is_async: bool = is_async
 
-        # Async-specific attributes
         if self.is_async:
             self.future_to_async_task: dict[Future, asyncio.Task] = {}
             self.pending_async_tasks: set[asyncio.Task] = set()
@@ -328,10 +321,8 @@ class _FunctionTracker:
         )
         self.tasks[func] = kwargs_task
 
-        # Initialize the set of futures for this function
         self.func_futures[func] = set()
 
-        # Track futures for this function
         if isinstance(kwargs_task.task, _MapTask):
             for chunk_task in kwargs_task.task.chunk_tasks:
                 fut = _ensure_future(chunk_task.value)
@@ -357,7 +348,6 @@ class _FunctionTracker:
     async def wait_for_futures_async(self) -> list[PipeFunc]:
         """Wait for futures to complete in async mode and return completed functions."""
         assert self.is_async
-        # Create asyncio tasks for all pending futures
         loop = asyncio.get_event_loop()
         pending_futures = list(self.future_to_func.keys())
         for fut in pending_futures:
@@ -366,18 +356,15 @@ class _FunctionTracker:
                 self.future_to_async_task[fut] = task
                 self.pending_async_tasks.add(task)
 
-        # Wait for any task to complete if there are pending tasks
         if self.pending_async_tasks:
             done, _ = await asyncio.wait(
                 self.pending_async_tasks,
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            # Remove completed tasks from pending set
             for task in done:
                 self.pending_async_tasks.discard(task)
 
-        # Return functions whose futures have all completed
         return self._get_completed_functions()
 
     def wait_for_futures_sync(self) -> list[PipeFunc]:
@@ -386,7 +373,6 @@ class _FunctionTracker:
 
         done, _ = wait(self.future_to_func.keys(), return_when=FIRST_COMPLETED)
 
-        # Get functions with potentially all futures completed
         completed_funcs = set()
         for fut in done:
             func = self.future_to_func.pop(fut)
@@ -413,7 +399,6 @@ class _FunctionTracker:
 
     def mark_function_processed(self, func: PipeFunc) -> None:
         """Mark a function as processed and clean up its tracking data."""
-        # Clean up future references
         all_futures = list(self.func_futures[func])
         for fut in all_futures:
             if fut in self.future_to_func:
@@ -421,10 +406,8 @@ class _FunctionTracker:
             if self.is_async and fut in self.future_to_async_task:
                 del self.future_to_async_task[fut]
 
-        # Clear futures for this function
         self.func_futures[func] = set()
 
-        # Mark as completed
         self.completed_funcs.add(func)
 
 
@@ -444,7 +427,6 @@ def _eager_scheduler_loop(
     """Dynamically submit tasks for functions as soon as they are ready."""
     tracker = _FunctionTracker()
 
-    # Submit initial ready tasks
     for f in dependency_info.ready:
         tracker.submit_function(
             f,
@@ -458,7 +440,6 @@ def _eager_scheduler_loop(
             cache,
         )
 
-    # Process tasks as they complete
     while tracker.has_active_futures():
         _process_completed_futures(
             tracker=tracker,
@@ -493,16 +474,13 @@ def _process_completed_futures(
     completed_funcs = tracker.wait_for_futures_sync()
 
     for func in completed_funcs:
-        # Process the task and update outputs
         result = _process_task(func, tracker.tasks[func], store, run_info, return_results)
 
         if return_results and result is not None:
             outputs.update(result)
 
-        # Mark this function as processed
         tracker.mark_function_processed(func)
 
-        # Update dependencies and submit new tasks
         _update_dependencies_and_submit(
             func=func,
             tracker=tracker,
@@ -537,7 +515,6 @@ def _update_dependencies_and_submit(
     for child in dependency_info.children.get(func, []):
         dependency_info.remaining_deps[child] -= 1
         if dependency_info.remaining_deps[child] == 0:
-            # Submit child function if all dependencies are resolved
             tracker.submit_function(
                 child,
                 run_info,

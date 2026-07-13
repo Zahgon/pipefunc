@@ -1,4 +1,3 @@
-"""Helpers for adaptive_scheduler.SlurmExecutor class introduced in 2.13.3."""
 
 from __future__ import annotations
 
@@ -136,7 +135,6 @@ def _adaptive_scheduler_imported() -> bool:
     """Check if the adaptive_scheduler package is imported and at the correct version."""
     if not is_imported("adaptive_scheduler"):  # pragma: no cover
         return False
-    # The SlurmExecutor was introduced in version 2.13.3
     min_version = "2.14.0"
     if not is_min_version("adaptive_scheduler", min_version):  # pragma: no cover
         msg = f"The 'adaptive_scheduler' package must be at least version {min_version}."
@@ -149,7 +147,6 @@ def _executors_for_generation(
     executor: dict[OUTPUT_TYPE, Executor],
 ) -> list[Executor]:
     from ._run import _executor_for_func
-    # Import here to avoid circular imports
 
     executors = []
     for func in generation:
@@ -180,24 +177,19 @@ def _map_slurm_executor_kwargs(
     if resources is None:
         return kwargs  # type: ignore[return-value]
 
-    # If resources is not callable, treat as static.
     if not callable(resources):
         if func.resources_scope == "element":
-            # Replicate the static resource dict for each element.
             resources_dict = _adaptive_scheduler_resource_dict(resources)
             resources_list = [resources_dict] * len(seq)
             dict_of_tuples = _list_of_dicts_to_dict_of_tuples(resources_list)
             kwargs.update(dict_of_tuples)
             return kwargs
         assert func.resources_scope == "map"
-        # Use the single static resource dict.
         scheduler_resources = _adaptive_scheduler_resource_dict(resources, clear=True)
         kwargs.update(scheduler_resources)
         return kwargs
 
-    # Now resources is callable.
     if func.resources_scope == "map":
-        # Call the callable only once.
         evaluated_resources = _resources_from_process_index(process_index, seq[0])
         scheduler_resources = _adaptive_scheduler_resource_dict(evaluated_resources, clear=True)
         kwargs.update(scheduler_resources)
@@ -246,10 +238,6 @@ def _adaptive_scheduler_resource_dict(
     }
     if not clear:
         return kwargs
-    # Remove None or [] values
-    # NOTE: Should not happen for `resources_scope == "element"`
-    # because they are cleaned in `_list_of_dicts_to_dict_of_tuples`
-    # which assumes that all dicts have the same keys.
     return {k: v for k, v in kwargs.items() if v}
 
 
@@ -259,13 +247,9 @@ def _resources_from_process_index(
 ) -> Resources | None:
     from ._run import _EVALUATED_RESOURCES, _prepare_kwargs_for_execution
 
-    # Import here to avoid circular imports
 
     kw = process_index.keywords
     assert kw["func"].resources is not None
-    # NOTE: We are executing this line below 2 times for each index.
-    # This is not ideal, if it becomes a performance issue we can cache
-    # the result.
     selected, _error_infos = _prepare_kwargs_for_execution(
         kw["func"],
         kw["kwargs"],
@@ -284,7 +268,5 @@ T = TypeVar("T")
 def _list_of_dicts_to_dict_of_tuples(
     list_of_dicts: list[dict[str, T]],
 ) -> dict[str, tuple[T, ...]]:
-    # Assume that all dicts have the same keys.
     tuples = {k: tuple(d[k] for d in list_of_dicts) for k in list_of_dicts[0]}
-    # Remove keys with all None or [] values
     return {k: v for k, v in tuples.items() if any(v)}

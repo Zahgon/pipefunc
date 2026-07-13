@@ -1,4 +1,3 @@
-"""Provides `zarr` integration for `pipefunc`."""
 
 from __future__ import annotations
 
@@ -42,28 +41,7 @@ def _open_or_create_array(
     dtype: Any,
     fill_value: Any,
 ) -> zarr.Array:
-    """Open an array (creating it if missing) via the public Zarr API.
-
-    Uses `zarr.api.synchronous.open_array(..., mode='a', ...)` to avoid
-    reimplementing open-or-create behavior.
-    """
-    # Suppress Zarr's UnstableSpecificationWarning for VariableLengthBytes
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UnstableSpecificationWarning)
-        array = zs.open_array(
-            store=store,
-            path=name,
-            mode="a",
-            shape=shape,
-            dtype=dtype,
-            chunks=chunks,
-            fill_value=fill_value,
-        )
-        # Maintain previous safety check: validate existing shape if already created
-        if array.shape != shape:
-            msg = f"Existing array '{name}' has unexpected shape {array.shape}, expected {shape}."
-            raise ValueError(msg)
-        return array
+    pass
 
 
 def _encode_scalar(codec: CloudPickleCodec, value: Any) -> bytes:
@@ -128,7 +106,6 @@ def _copy_store(source: Store, destination: Store) -> None:
     """
 
     async def _copy() -> None:
-        # Use public Store API (lazy-open in get/set) without relying on privates
         prototype = default_buffer_prototype()
         async for key in source.list():
             buffer = await source.get(key, prototype=prototype)
@@ -139,10 +116,6 @@ def _copy_store(source: Store, destination: Store) -> None:
 
 
 class ZarrFileArray(StorageBase):
-    """Array interface to a Zarr store.
-
-    Only exists if the `zarr` package is installed!
-    """
 
     storage_id = "zarr_file_array"
     requires_serialization = True
@@ -198,8 +171,6 @@ class ZarrFileArray(StorageBase):
             self.store,
             name="mask",
             shape=self.resolved_shape,
-            # Zarr v3 requires an empty tuple for 0-D arrays; using chunks=(1,)
-            # raises ValueError. Use chunks=() for scalars.
             chunks=() if len(self.resolved_shape) == 0 else (1,) * len(self.resolved_shape),
             dtype=bool,
             fill_value=True,
@@ -223,8 +194,7 @@ class ZarrFileArray(StorageBase):
 
     @property
     def rank(self) -> int:
-        """Return the rank of the array."""
-        return len(self.resolved_shape)
+        pass
 
     def get_from_index(self, index: int) -> Any:
         """Return the data associated with the given linear index."""
@@ -237,8 +207,6 @@ class ZarrFileArray(StorageBase):
         if self._mask[np_index]:
             return np.ma.masked
         data = self.array[full_index]
-        # In Zarr v3 array indexing returns a NumPy ndarray (scalar
-        # indices yield a 0-D ndarray); unwrap to a Python scalar for parity
         decoded = np.asarray(_decode_array(self.object_codec, data), dtype=object)
         return decoded.item() if decoded.shape == () else decoded
 
@@ -308,9 +276,7 @@ class ZarrFileArray(StorageBase):
 
     @property
     def mask(self) -> np.ma.core.MaskedArray:
-        """Return the mask associated with the array."""
-        mask = self._mask[:]
-        return np.ma.MaskedArray(mask, dtype=bool)
+        pass
 
     def mask_linear(self) -> list[bool]:
         """Return a list of booleans indicating which elements are missing."""
@@ -375,8 +341,7 @@ class ZarrFileArray(StorageBase):
 
     @property
     def dump_in_subprocess(self) -> bool:
-        """Indicates if the storage can be dumped in a subprocess and read by the main process."""
-        return True
+        pass
 
     def _store_scalar_encoded(self, indices: tuple[int, ...], encoded: bytes) -> None:
         """Store a single serialized value at the provided indices."""
@@ -396,7 +361,6 @@ class ZarrFileArray(StorageBase):
 
 
 class _SharedDictStore(MemoryStore):
-    """Custom Store subclass using a shared dictionary."""
 
     def __init__(self, shared_dict: multiprocessing.managers.DictProxy | None = None) -> None:
         """Initialize the _SharedDictStore.
@@ -414,10 +378,6 @@ class _SharedDictStore(MemoryStore):
 
 
 class ZarrMemoryArray(ZarrFileArray):
-    """Array interface to an in-memory Zarr store.
-
-    Only exists if the `zarr` package is installed!
-    """
 
     storage_id = "zarr_memory"
     requires_serialization = False
@@ -447,10 +407,7 @@ class ZarrMemoryArray(ZarrFileArray):
 
     @property
     def persistent_store(self) -> Store | None:
-        """Return the persistent store."""
-        if self.folder is None:  # pragma: no cover
-            return None
-        return LocalStore(self.folder)
+        pass
 
     def persist(self) -> None:
         """Persist the memory storage to disk."""
@@ -471,15 +428,10 @@ class ZarrMemoryArray(ZarrFileArray):
 
     @property
     def dump_in_subprocess(self) -> bool:
-        """Indicates if the storage can be dumped in a subprocess and read by the main process."""
-        return False
+        pass
 
 
 class ZarrSharedMemoryArray(ZarrMemoryArray):
-    """Array interface to a shared memory Zarr store.
-
-    Only exists if the `zarr` package is installed!
-    """
 
     storage_id = "zarr_shared_memory"
     requires_serialization = True
@@ -508,30 +460,10 @@ class ZarrSharedMemoryArray(ZarrMemoryArray):
 
     @property
     def dump_in_subprocess(self) -> bool:
-        """Indicates if the storage can be dumped in a subprocess and read by the main process."""
-        return True
+        pass
 
 
 class CloudPickleCodec(Codec):
-    """Codec to encode data as cloudpickled bytes.
-
-    Useful for encoding an array of Python objects.
-
-    Parameters
-    ----------
-    protocol
-        The protocol used to pickle data.
-
-    Examples
-    --------
-    >>> from pipefunc.map._storage._zarr import CloudPickleCodec
-    >>> import numpy as np
-    >>> x = np.array(['foo', 'bar', 'baz'], dtype='object')
-    >>> f = CloudPickleCodec()
-    >>> f.decode(f.encode(x))
-    array(['foo', 'bar', 'baz'], dtype=object)
-
-    """
 
     codec_id = "cloudpickle"
 
@@ -585,14 +517,7 @@ class CloudPickleCodec(Codec):
         return dec
 
     def get_config(self) -> dict[str, Any]:
-        """Get the configuration of the codec.
-
-        Returns
-        -------
-            The configuration of the codec.
-
-        """
-        return {"id": self.codec_id, "protocol": self.protocol}
+        pass
 
     def __repr__(self) -> str:
         """Return a string representation of the codec."""

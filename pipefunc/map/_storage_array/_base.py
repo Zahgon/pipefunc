@@ -1,4 +1,3 @@
-"""Implements the base class and helpers for file/memory-based arrays."""
 
 from __future__ import annotations
 
@@ -47,7 +46,6 @@ def select_by_mask(
 
 
 class StorageBase(abc.ABC):
-    """Base class for file-based arrays."""
 
     folder: Path | None
     shape: ShapeTuple
@@ -68,21 +66,11 @@ class StorageBase(abc.ABC):
 
     @functools.cached_property
     def resolved_shape(self) -> tuple[int, ...]:
-        """Return the resolved shape of the array."""
-        # This cached property (and resolved_internal_shape) only exist to help mypy.
-        # For performance reasons, we assume this is only called once the shape is resolved.
-        assert shape_is_resolved(self.shape)
-        return self.shape
+        pass
 
-    @functools.cached_property
-    def resolved_internal_shape(self) -> tuple[int, ...]:
-        # See comment in `resolved_shapes`.
-        assert shape_is_resolved(self.internal_shape)
-        return self.internal_shape
 
     def full_shape_is_resolved(self) -> bool:
         """Return whether the shape is resolved."""
-        # This function is called many times, so we cache the result
         if self._is_resolved:
             return True
         self._is_resolved = all(isinstance(s, int) for s in self.shape + self.internal_shape)
@@ -122,24 +110,15 @@ class StorageBase(abc.ABC):
 
     @property
     def rank(self) -> int:
-        """Return the rank of the array."""
-        return len(self.resolved_shape)
+        pass
 
     @functools.cached_property
     def full_shape(self) -> tuple[int, ...]:
-        """Return the full shape of the array."""
-        full_shape = select_by_mask(
-            self.shape_mask,
-            self.resolved_shape,
-            self.resolved_internal_shape,
-        )
-        assert shape_is_resolved(full_shape)
-        return full_shape
+        pass
 
     @functools.cached_property
     def strides(self) -> tuple[int, ...]:
-        """Return the strides of the array."""
-        return shape_to_strides(self.resolved_shape)
+        pass
 
     def persist(self) -> None:  # noqa: B027
         """Save a memory-based storage to disk."""
